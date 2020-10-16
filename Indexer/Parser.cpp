@@ -9,7 +9,7 @@
 #include <unordered_map> 
 #include <locale>
 #include <codecvt>
-#include "varbyte.h"
+#include "Util.h"
 #include <libxml++/libxml++.h>
 #include <libxml/HTMLparser.h>
 #include <libxml/HTMLtree.h>
@@ -18,23 +18,8 @@
 
 using namespace std;
 
-struct posting
-{
-    unsigned int data[3];
-
-    unsigned int& docid() { return data[0]; }
-    unsigned int& termid() { return data[1]; }
-    unsigned int& frequency() { return data[2]; }
-};
-
-struct url_entry
-{
-    string url;
-    unsigned int size;
-};
-
-constexpr auto BUFFER_SIZE = 134217728; // 1073741824; // 1 GB
-
+//constexpr auto BUFFER_SIZE = 134217728; // 1073741824; // 1 GB
+constexpr auto STR_BUFFER_SIZE = 1048576; // 1 Mb
 // Memory Buffer
 //char* read_buffer = new char[BUFFER_SIZE]();
 //auto postings = vector<posting>{};
@@ -44,118 +29,108 @@ unsigned int curr_termid = 0;
 unsigned int curr_outputid = 0;
 
 // Term to TermId map
-unordered_map<string, unsigned int> term_termid_map;
-unordered_map<unsigned int, string> termid_term_map;
-
-// URL vector
-auto url_table = vector<url_entry>{};
-
-vector<unsigned char> postings;
-
-void read_file(const string& filename);
 vector<string> parse(string& str);
 void print_node(const xmlpp::Node* node, unsigned int indentation = 0);
 void tokenize(const string& str, vector<string>& vec);
 //void count_words(vector<string> const& words, unordered_map<unsigned int, size_t>& wordCount);
 //void create_postings(unsigned int docid, unordered_map<unsigned int, unsigned int>& wordCount, vector<posting>& vec);
 unordered_map<unsigned int, unsigned int> count_words(vector<string> const& words);
-void create_postings(unsigned int docid, unordered_map<unsigned int, unsigned int>& wordCount, vector<unsigned char>& vec);
+void create_postings(unsigned int docid, unordered_map<unsigned int, unsigned int>& wordCount, vector<Util::Posting>& postings);
 void test_decode();
 vector<string> tokenize_boost(string const& str);
 
-void test()
+void print_words(const string& filename, unordered_map<string, unsigned int>& term_termid_map)
 {
-    read_file("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\example2.txt");
-    test_decode();
-}
-
-void print_words(const string& filename)
-{
-    ofstream os(filename, ofstream::out);
+    ofstream os(filename, ios::out | ofstream::out);
     for (const auto& elem : term_termid_map)
     {
         os << elem.first << '\n';
     }
 }
 
-
-void print_termmap(const string& filename)
+void print_termmap(const string& filename, unordered_map<string, unsigned int>& term_termid_map)
 {
-    ofstream os(filename, ofstream::binary);
+    cout << "Writing term map to " << filename << '\n';
+    ofstream os(filename, ios::out | ofstream::binary);
     for (const auto& elem : term_termid_map)
     {
-        os << elem.first << elem.second;
+        // write out the binary in the form of # of bytes of string, string, word count
+        size_t size = elem.first.size();
+        os.write((char*)&size, sizeof(size));
+        os.write(elem.first.c_str(), size);
+        os.write((char*)&elem.second, sizeof(elem.second));
     }
 }
 
+void print_urltable(const string& filename, vector<pair<string, unsigned int>>& urltable)
+{
+    cout << "Writing url table to " << filename << '\n';
+    ofstream os(filename, ios::out | ofstream::binary);
+    for (const auto& elem : urltable)
+    {
+        size_t size = elem.first.size();
+        os.write((char*) &size, sizeof(size));
+        os.write(elem.first.c_str(), size);
+        os.write((char*) &elem.second, sizeof(elem.second));
+    }
+}
+
+void print_postings(const string& filename, const vector<Util::Posting>& postings)
+{
+    cout << "Writing posting to " << filename << '\n';
+    //ofstream os(filename, ios::out | ofstream::binary);
+    //ostream_iterator<unsigned char> out_it(os);
+    //std::copy(postings.begin(), postings.end(), out_it);
+
+    ofstream os(filename, ios::out | ios::binary);
+    for (const auto& posting : postings)
+    {
+        vector<unsigned char> termid = Util::encode(posting.termid);
+        vector<unsigned char> docid = Util::encode(posting.docid);
+        vector<unsigned char> freq = Util::encode(posting.frequency);
+        os.write((char*)termid.data(), termid.size());
+        os.write((char*)docid.data(), docid.size());
+        os.write((char*)freq.data(), freq.size());
+    }
+}
+
+// ./parser infile outpath buffersize
 int main(int argc, char* argv[])
 {
-    postings.reserve(BUFFER_SIZE);
-    auto t1 = chrono::steady_clock::now();
-    read_file("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\fulldocs-new.trec");
-    auto t2 = chrono::steady_clock::now();
-    chrono::duration<double> time_span = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
-    std::cout << "Took " << time_span.count() << " seconds." << '\n';
-}
-
-void test_decode()
-{
-    ifstream is("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\output" + to_string(curr_outputid-1), std::ios::binary);
-    vector<char> vec;
-    //vector<unsigned char> postings;
-    //postings.reserve(BUFFER_SIZE);
-    if (is) {
-        // get length of file:
-        is.seekg(0, is.end);
-        int length = is.tellg();
-        is.seekg(0, is.beg);
-        vec.resize(length);
-        is.read(&vec[0], length);
-        auto decoded = varbyte::decode(vec);
-        ostream_iterator<unsigned int> out_it(cout,", ");
-        copy(decoded.begin(), decoded.end(), out_it);
-    }
-}
-
-void output_buffer(const string& filename, const vector<unsigned char>& postings)
-{
-    ofstream os(filename, ofstream::binary);
-    // print out the postings
-    //for (auto const& p : postings)
-    //{
-    //    os << p.docid << ',' << p.termid << ',' << p.freq << endl;
-    //}
-    ostream_iterator<unsigned char> out_it(os);
-    std::copy(postings.begin(), postings.end(), out_it);
-
-    //os.write((const char*)postings[0], postings.size());
-}
-
-void read_file(const string& filename)
-{
-    wifstream is(filename);
-    
-    // This line is necessary for utf-16 documents made on Windows. not sure why...
-    //is.imbue(locale(is.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
-
+    vector<Util::Posting> postings;
     wstring line;
-    line.reserve(BUFFER_SIZE);
     string buf;
-    buf.reserve(BUFFER_SIZE);
+    string input_file(argv[1]);
+    string output_path(argv[2]);
+    unsigned int BUFFER_SIZE = stoi(argv[3]) / sizeof(Util::Posting);
     bool in_text = false;
-    //auto wordCount = unordered_map<unsigned int, unsigned int>{};
-    //vector<string> bow;
-
-    auto t1 = chrono::steady_clock::now();
-    auto t2 = chrono::steady_clock::now();
-
+    auto url_table = vector<pair<string, unsigned int>>{};
+    ofstream outputlist(output_path + "\\outputlist.txt", ios::out | ios::app);
+    unordered_map<string, unsigned int> term_termid_map;
     // https://stackoverflow.com/questions/11040703/convert-unicode-to-char/11040983#11040983
     // xmllib2 only works with utf8 strings, so need to convert from utf16 to utf8 (on windows file is UTF-16LE)
     // htmlReadDoc has an encoding parameter, but I couldn't figure out how to get it to correctly decode utf-16 to utf-8,
     // so i had to do it myself before passing it to htmlReadDoc
     wstring_convert<codecvt_utf8_utf16<wchar_t>, wchar_t> convert;
+
+    //read_file("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\fulldocs-new.trec");
+    wifstream is(input_file, ios::in);
+
+    // This line is necessary for utf-16 documents made on Windows. not sure why...
+    //is.imbue(locale(is.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
+
+    postings.reserve(BUFFER_SIZE);
+    // for now these two strings are unbounded in size because in order to parse a document,
+    // I need to be able to read the entire document into memory to pass to the parser
+    line.reserve(STR_BUFFER_SIZE); 
+    buf.reserve(STR_BUFFER_SIZE);
+
+    auto timer1 = chrono::steady_clock::now();
     try {
-        if (is) {
+        // Check that we opened the input stream
+        if (is) {    
+            auto t1 = chrono::steady_clock::now();
+            auto t2 = chrono::steady_clock::now();
             // for now we are just going to look for text between <TEXT> and </TEXT> tags
             // and sends that to our HTML parser. We are also assuming that the text will fit
             // in memory, so we can process a full document at a time.
@@ -172,35 +147,31 @@ void read_file(const string& filename)
                     if (line.compare(L"/TEXT") == 0)
                     {
                         in_text = false;
-                        parse(buf);
                         auto bow = parse(buf);
-                        auto wordCount = count_words(bow);
-                        
-                        url_table[curr_docid].size = bow.size();
+                        auto wordCount = count_words(bow, term_termid_map);
+
+                        url_table[curr_docid].second = bow.size();
                         create_postings(curr_docid, wordCount, postings);
-                        //wordCount.clear();
 
                         // if we need to write our buffer out to a file, do so
                         if (postings.size() > BUFFER_SIZE)
                         {
-                            string filename = "output" + to_string(curr_outputid++);
-                            cout << "Writing postings out to " + filename << endl;
-                            output_buffer("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\" + filename, postings);
-                            print_words("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\words.txt");
+                            sort(postings.begin(), postings.end());
+                            print_postings(output_path + "\\output" + to_string(curr_outputid) + ".bin", postings);
+                            outputlist << output_path + "\\output" + to_string(curr_outputid) + ".bin" << '\n';
+                            ++curr_outputid;
+                            //print_words("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\words.txt");
                             postings.clear();
                         }
                         if (curr_docid % 1000 == 0)
                         {
                             t2 = chrono::steady_clock::now();
                             chrono::duration<double> time_span = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
-                            cout << "Read docid: " << curr_docid << "(" << time_span.count() << " sec)" << "unique words: " << term_termid_map.size() << '\n';
+                            cout << "Read docid: " << curr_docid << "(" << time_span.count() << " sec)" << "unique words: " << term_termid_map.size() << " posting buffer: " << postings.size() << "/" << BUFFER_SIZE << '\n';
                             t1 = chrono::steady_clock::now();
                         }
                         ++curr_docid;
                         buf.clear();
-                        //bow.clear();
-                        // TESTING
-                        //term_termid_map.clear();
                     }
 
                     // otherwise write our tag as part of our text and continue
@@ -229,20 +200,47 @@ void read_file(const string& filename)
                         // Return to position before "Read line".
                         //is.seekg(len, ios_base::beg);
 
-                        url_table.push_back(url_entry{ convert.to_bytes(line),0 });
+                        url_table.push_back(pair<string, unsigned int>{ convert.to_bytes(line),0 });
                         buf += convert.to_bytes(line);
                     }
                 }
             }
         }
-        output_buffer("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\output" + to_string(curr_outputid++), postings);
     }
     catch (exception& e)
     {
-        ofstream os("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\error.txt", ios_base::out);
+        ofstream os(output_path + "error.txt", ios::out);
         os << "docid: " << curr_docid << "exception: " << e.what() << "line: " << buf << '\n';
     }
+    sort(postings.begin(), postings.end());
+    print_postings(output_path + "\\output" + to_string(curr_outputid) + ".bin", postings);
+    outputlist << output_path + "\\output" + to_string(curr_outputid) + ".bin" << '\n';
+    print_termmap(output_path + "\\termmap.bin");
+    print_urltable(output_path + "\\urltable.bin", url_table);
+
+    auto timer2 = chrono::steady_clock::now();
+    chrono::duration<double> time_span = chrono::duration_cast<chrono::duration<double>>(timer2 - timer1);
+    std::cout << "Took " << time_span.count() << " seconds." << '\n';
 }
+
+//void test_decode()
+//{
+//    ifstream is("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\output" + to_string(curr_outputid-1), ios::out | std::ios::binary);
+//    vector<char> vec;
+//    //vector<unsigned char> postings;
+//    //postings.reserve(BUFFER_SIZE);
+//    if (is) {
+//        // get length of file:
+//        is.seekg(0, is.end);
+//        int length = is.tellg();
+//        is.seekg(0, is.beg);
+//        vec.resize(length);
+//        is.read(&vec[0], length);
+//        auto decoded = Util::decode(vec);
+//        ostream_iterator<unsigned int> out_it(cout,", ");
+//        copy(decoded.begin(), decoded.end(), out_it);
+//    }
+//}
 
 // extracts the text starting from an xmlpp root node
 // based on https://developer.gnome.org/libxml++-tutorial/stable/chapter-parsers.html#idm46
@@ -329,12 +327,13 @@ void tokenize(string const& str, vector<string>& vec)
 vector<string> tokenize_boost(string const& str)
 {
     auto results = vector<string>{};
-    boost::split(results, str, boost::is_any_of(" .,?!()/-_\"\'\r\n\t"));
+    boost::split(results, str, boost::is_any_of(" .,?!()/-_[]\"\'\r\n\t"));
     // get rid of empty strings and long strings
-    results.erase(remove_if(begin(results), end(results), [](string x){ return x.size() > 0 && x.size() < 30; }), end(results));
+    //results.erase(remove(begin(results), end(results), ""), end(results));
+    results.erase(remove_if(begin(results), end(results), [](string x){ return x.size() == 0 || x.size() > 30; }), end(results));
     return results;
 }
-unordered_map<unsigned int, unsigned int> count_words(vector<string> const& words)
+unordered_map<unsigned int, unsigned int> count_words(vector<string> const& words, unordered_map<string, unsigned int>& term_termid_map)
 {
     auto wordCount = unordered_map<unsigned int, unsigned int>{};
     // count words using range operator (c++ 11 feature)
@@ -350,25 +349,33 @@ unordered_map<unsigned int, unsigned int> count_words(vector<string> const& word
     return wordCount;
 }
 
-void create_postings(unsigned int docid, unordered_map<unsigned int, unsigned int>& wordCount, vector<unsigned char>& postings)
+void create_postings(unsigned int docid, unordered_map<unsigned int, unsigned int>& wordCount, vector<Util::Posting>& postings)
 {
-    // resize our array if necessary
-    //postings.reserve(postings.size() + wordCount.size());
-    //postings.reserve(postings.size() + wordCount.size()*3);
-
-    vector<unsigned char> temp;
-
     // iterate over map using range operator (c++ 11 feature)
     for (const auto& it : wordCount) {
-        //vec.emplace_back(posting{ docid, it.first, it.second });
-        temp = varbyte::encode(docid);
-        postings.insert(end(postings), begin(temp), end(temp));
-        temp = varbyte::encode(it.first);
-        postings.insert(end(postings), begin(temp), end(temp));
-        temp = varbyte::encode(it.second);
-        postings.insert(end(postings), begin(temp), end(temp));
+        postings.push_back(Util::Posting{ it.first, docid, it.second });
     }
 }
+
+//void create_postings(unsigned int docid, unordered_map<unsigned int, unsigned int>& wordCount, vector<unsigned char>& postings)
+//{
+//    // resize our array if necessary
+//    //postings.reserve(postings.size() + wordCount.size());
+//    //postings.reserve(postings.size() + wordCount.size()*3);
+//
+//    vector<unsigned char> temp;
+//
+//    // iterate over map using range operator (c++ 11 feature)
+//    for (const auto& it : wordCount) {
+//        //vec.emplace_back(posting{ docid, it.first, it.second });
+//        temp = varbyte::encode(docid);
+//        postings.insert(end(postings), begin(temp), end(temp));
+//        temp = varbyte::encode(it.first);
+//        postings.insert(end(postings), begin(temp), end(temp));
+//        temp = varbyte::encode(it.second);
+//        postings.insert(end(postings), begin(temp), end(temp));
+//    }
+//}
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
 // Debug program: F5 or Debug > Start Debugging menu
