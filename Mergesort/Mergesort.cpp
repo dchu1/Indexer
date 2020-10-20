@@ -30,11 +30,11 @@ void read_urltable(const string& filepath)
     }
 }
 
-Util::Posting nextPosting(ifstream* is)
-{
-    int counter = 0;
-
-}
+//Util::Posting nextPosting(ifstream* is)
+//{
+//    int counter = 0;
+//
+//}
 
 // ./mergesort finlist foutlist degree memsize
 int main(int argc, char* argv[])

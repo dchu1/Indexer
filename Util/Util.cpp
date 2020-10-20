@@ -11,28 +11,30 @@ namespace Util {
     //    cout << "\n";
     //}
 
-	std::vector<unsigned char> encode(const unsigned int& num)
+	std::vector<unsigned char> encode(const unsigned int *num, const int size)
 	{
-		unsigned char multiplicand, temp;
-		unsigned char highest_bit_one = 128;
-		int base, size, i;
-		int remaining_value;
 		std::vector<unsigned char> result;
-		remaining_value = num;
-		i = (int)(log(num) / log(128)); // largest power of 128
-		while (remaining_value >= 128)
-		{
-			base = pow(128, i);
-			multiplicand = num / base;
-			temp = multiplicand | highest_bit_one;
+		unsigned char highest_bit_one = 128;
+		for (int it = 0; it < size; it++) {
+			unsigned char multiplicand, temp;
+			int base, size, i;
+			int remaining_value;
+			remaining_value = *(num + it);
+			i = (int)(log(remaining_value) / log(128)); // largest power of 128
+			while (remaining_value >= 128)
+			{
+				base = pow(128, i);
+				multiplicand = remaining_value / base;
+				temp = multiplicand | highest_bit_one;
+				result.push_back(temp);
+				remaining_value = remaining_value % base;
+				i--;
+				//print_byte_as_bits(temp);
+			}
+			temp = (unsigned char)remaining_value;
 			result.push_back(temp);
-			remaining_value = remaining_value % base;
-			i--;
 			//print_byte_as_bits(temp);
 		}
-		temp = (unsigned char)num;
-		result.push_back(temp);
-		//print_byte_as_bits(temp);
 		return result;
 	}
 
