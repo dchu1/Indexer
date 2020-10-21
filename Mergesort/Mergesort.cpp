@@ -5,159 +5,186 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <queue>
+#include <memory>
+#include <chrono>
 #include "Util.h"
+#include "Mergesort.h"
 
 using namespace std;
 
-struct filebuf {
-    ifstream is;
-
-};
-void read_urltable(const string& filepath)
-{
-    auto url_table = vector<pair<string, unsigned int>>{};
-    ifstream is(filepath, ios::in | ios::binary);
-    size_t stringsize;
-    string url;
-    unsigned int size;
-    while (is.read((char*)&stringsize, sizeof(size_t)))
-    {
-        url.resize(stringsize);
-        is.read((char*)url.c_str(), stringsize);
-        is.read((char*)&size, sizeof(unsigned int));
-        cout << url << ", " << size << '\n';
-        url_table.push_back(pair<string, unsigned int>{ url, size });
-    }
-}
-
-//Util::Posting nextPosting(ifstream* is)
+//void read_urltable(const string& filepath)
 //{
-//    int counter = 0;
-//
+//    auto url_table = vector<pair<string, unsigned int>>{};
+//    ifstream is(filepath, ios::in | ios::binary);
+//    size_t stringsize;
+//    string url;
+//    unsigned int size;
+//    while (is.read((char*)&stringsize, sizeof(size_t)))
+//    {
+//        url.resize(stringsize);
+//        is.read((char*)url.c_str(), stringsize);
+//        is.read((char*)&size, sizeof(unsigned int));
+//        cout << url << ", " << size << '\n';
+//        url_table.push_back(pair<string, unsigned int>{ url, size });
+//    }
 //}
 
-// ./mergesort finlist foutlist degree memsize
-int main(int argc, char* argv[])
+void write_to_file(ofstream& os, Util::Posting_str& ps, bool encode)
 {
-    string line;
-    int memSize;
-    int maxDegree, degree;
-    int numFiles = 0;
-
-    memSize = stoi(argv[4]);
-    maxDegree = stoi(argv[3]);
-    char* bufSpace = new char[memSize];
-    int bufSize = memSize / (maxDegree + 1);
-    vector<ifstream*> ifstreams;
-    ifstreams.reserve(maxDegree);
-    ifstream is(argv[1], ios::in);
-    if (is)
+    // This code adapted from SPIMI_Inverter. Might want to make this a util function
+    if (encode)
     {
-        auto os = new ofstream();
-        os->rdbuf()->pubsetbuf(bufSpace + (maxDegree * bufSize), memSize - (maxDegree * bufSize));
-        os->open(argv[2], ios::out | ios::binary);
-        degree = 0;
-        while (getline(is, line))
-        {
-            auto temp = new ifstream();
-            temp->rdbuf()->pubsetbuf(bufSpace+(degree*bufSize), bufSize);
-            temp->open(line, ios::in | ios::binary);
-            ifstreams.push_back(temp);
-            ++degree;
-            // if we've read in all our merge files, start merging
-            if (degree == (maxDegree - 1))
-            {
-
-            }
-        }
-        
+        // write out the binary in the form of docid, freq, # of bytes of string, string
+        // this is kind of dangerous as i'm mixing size_t and unsigned int which are not
+        // guaranteed to be the same size of bytes. Should standardize on one or the other
+        size_t size = ps.term.size();
+        std::vector<unsigned char> v = Util::encode(&ps.docid, 2);
+        os.write((char*)v.data(), v.size());
+        v = Util::encode(&size, 1);
+        os.write((char*)v.data(), v.size());
+        os.write(ps.term.c_str(), size);
     }
-
-    
-    //FILE* finlist, * foutlist;  /* files with lists of in/output file names */
-    //int memSize;             /* available memory for merge buffers (in bytes) */
-    //int maxDegree, degree;   /* max allowed merge degree, and actual degree */
-    //int numFiles = 0;        /* # of output files that are generated */
-    //char* bufSpace;
-    //char filename[1024];
-    //void heapify();
-    //void writeRecord();
-    //int nextRecord();
-    //int i;
-
-    //recSize = atoi(argv[1]);
-    //memSize = atoi(argv[2]);
-    //bufSpace = (unsigned char*)malloc(memSize);
-    //maxDegree = atoi(argv[3]);
-    //ioBufs = (buffer*)malloc((maxDegree + 1) * sizeof(buffer));
-    //heap.arr = (int*)malloc((maxDegree + 1) * sizeof(int));
-    //heap.cache = (void*)malloc(maxDegree * recSize);
-
-    //finlist = fopen64(argv[4], "r");
-    //foutlist = fopen64(argv[6], "w");
-
-    //while (!feof(finlist))
-    //{
-    //    for (degree = 0; degree < maxDegree; degree++)
-    //    {
-    //        fscanf(finlist, "%s", filename);
-    //        if (feof(finlist)) break;
-    //        ioBufs[degree].f = fopen64(filename, "r");
-    //    }
-    //    if (degree == 0) break;
-
-    //    /* open output file (output is handled by the buffer ioBufs[degree]) */
-    //    sprintf(filename, "%s%d", argv[5], numFiles);
-    //    ioBufs[degree].f = fopen64(filename, "w");
-
-    //    /* assign buffer space (all buffers same space) and init to empty */
-    //    bufSize = memSize / ((degree + 1) * recSize);
-    //    for (i = 0; i <= degree; i++)
-    //    {
-    //        ioBufs[i].buf = &(bufSpace[i * bufSize * recSize]);
-    //        ioBufs[i].curRec = 0;
-    //        ioBufs[i].numRec = 0;
-    //    }
-
-    //    /* initialize heap with first elements. Heap root is in heap[1] (not 0) */
-    //    heap.size = degree;
-    //    for (i = 0; i < degree; i++)  heap.arr[i + 1] = nextRecord(i);
-    //    for (i = degree; i > 0; i--)  heapify(i);
-
-    //    /* now do the merge - ridiculously simple: do 2 steps until heap empty */
-    //    while (heap.size > 0)
-    //    {
-    //        /* copy the record corresponding to the minimum to the output */
-    //        writeRecord(&(ioBufs[degree]), heap.arr[1]);
-
-    //        /* replace minimum in heap by the next record from that file */
-    //        if (nextRecord(heap.arr[1]) == -1)
-    //            heap.arr[1] = heap.arr[heap.size--];     /* if EOF, shrink heap by 1 */
-    //        if (heap.size > 1)  heapify(1);
-    //    }
-
-    //    /* flush output, add output file to list, close in/output files, and next */
-    //    writeRecord(&(ioBufs[degree]), -1);
-    //    fprintf(foutlist, "%s\n", filename);
-    //    for (i = 0; i <= degree; i++)  fclose(ioBufs[i].f);
-    //    numFiles++;
-    //}
-
-    //fclose(finlist);
-    //fclose(foutlist);
-    //free(ioBufs);
-    //free(heap.arr);
-    //free(heap.cache);
-    return 0;
+    else
+    {
+        // write out the binary in the form of docid, freq, # of bytes of string, string
+        // this is kind of dangerous as i'm mixing size_t and unsigned int which are not
+        // guaranteed to be the same size of bytes. Should standardize on one or the other
+        size_t size = ps.term.size();
+        os.write((char*)&ps.docid, sizeof(ps.docid));
+        os.write((char*)&ps.frequency, sizeof(ps.frequency));
+        os.write((char*)&size, sizeof(size));
+        os.write(ps.term.c_str(), size);
+    }
 }
 
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
+ifstream& nextPostingStr(ifstream& is, Util::Posting_str& posting)
+{
+    try {
+        int counter = 0;
+        // read in docid, freq, # of bytes of string
+        std::vector<unsigned int>vec;
+        vec.reserve(3);
+        if (Util::decode(is, vec, 3))
+        {
+            posting.docid = vec[0];
+            posting.frequency = vec[1];
 
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
+            // read in string
+            char* str = new char[vec[2] + 1];
+            is.read(str, vec[2]);
+            str[vec[2]] = '\0';
+            posting.term = str;
+            delete str;
+        }
+    }
+    catch (exception& e)
+    {
+        // for now i'm just going to print some exception happened
+        //cout << "Exception occurred: " << e.what() << endl;
+        throw e;
+    }
+    return is;
+}
+
+// ./mergesort finlist foutpath degree
+int main(int argc, char* argv[])
+{
+    auto timer1 = chrono::steady_clock::now();
+    string line;
+    int maxDegree, degree;
+    int counter = 0;
+    maxDegree = stoi(argv[3]);
+    vector<ifstream> ifstream_vec;
+    ifstream_vec.reserve(maxDegree);
+    ifstream filelist_is(argv[1], ios::in);
+    string outpath = argv[2];
+    ofstream outfilelist_os(outpath + "\\mergefiles.txt", ios::out);
+
+    // Read in the file that lists our input files
+    if (filelist_is)
+    {
+        //os->rdbuf()->pubsetbuf(bufSpace + (maxDegree * bufSize), memSize - (maxDegree * bufSize));
+        //os->open(argv[2], ios::out | ios::binary);
+
+        // read from our input file list file
+        while (getline(filelist_is, line))
+        {
+            degree = 0;
+            string filepath = outpath + "\\merge" + to_string(counter) + ".bin";
+            auto os = ofstream(filepath, ios::out | ios::binary);
+            do
+            {
+                //unique_ptr<ifstream> temp(new ifstream(line, ios::in | ios::binary));
+                //temp->rdbuf()->pubsetbuf(bufSpace+(degree*bufSize), bufSize);
+                //temp->open(line, ios::in | ios::binary);
+                try {
+                    ifstream_vec.push_back(ifstream(line, ios::in | ios::binary));
+                    ++degree;
+                }
+                catch (exception& e) {
+                    cout << "Error reading file: " + line + ", Exception: " << e.what() << endl;
+                }
+            } while (degree < maxDegree && getline(filelist_is, line));
+            
+            // populate our priority queue
+            priority_queue<heap_entry<Util::Posting_str>, vector<heap_entry<Util::Posting_str>>, pq_comparator<heap_entry<Util::Posting_str>>> pq(pq_comparator<heap_entry<Util::Posting_str>>(true));
+            try {
+                for (int i = 0; i < ifstream_vec.size(); i++)
+                {
+                    Util::Posting_str ps;
+                    if (nextPostingStr(ifstream_vec[i], ps))
+                        pq.push(heap_entry<Util::Posting_str>{i, ps});
+                    //else
+                    //{
+                    //    // if we were unable to read from the file, remove it from our list
+                    //    //ifstreams[i].close();
+                    //    ifstream_vec.erase(begin(ifstream_vec) + i);
+                    //}
+                }
+                
+                // do the merge by popping off our priority queue
+                // keep the last seen posting so we can merge if necessary (i.e.
+                // if a term and docid were split across two files, we can merge
+                // them into one posting).
+                Util::Posting_str cached_posting;
+                Util::Posting_str temp2;
+                auto temp = pq.top();
+                cached_posting = temp.obj;
+                pq.pop();
+                if (nextPostingStr(ifstream_vec[temp.from_file_index], temp2))
+                {
+                    pq.push(heap_entry<Util::Posting_str>{temp.from_file_index, temp2});
+                }
+                while (pq.size() > 0)
+                {
+                    auto he = pq.top();
+                    auto idx = he.from_file_index;
+                    if (cached_posting == he.obj)
+                        cached_posting.frequency += he.obj.frequency;
+                    else
+                    {
+                        write_to_file(os, cached_posting, true);
+                        cached_posting = he.obj;
+                    }
+                    Util::Posting_str ps;
+                    pq.pop();
+                    if (nextPostingStr(ifstream_vec[idx], ps))
+                    {
+                        pq.push(heap_entry<Util::Posting_str>{idx, ps});
+                    }
+                }
+                write_to_file(os, cached_posting, true);
+            }
+            catch (exception& e)
+            {
+                os.flush();
+                throw e;
+            }
+            counter++;
+            outfilelist_os << filepath << '\n';
+        }
+    }
+    std::cout << "Total time: " << chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - timer1).count() << " seconds." << endl;
+    return 0;
+}

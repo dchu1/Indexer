@@ -35,15 +35,15 @@ void BSBI_Inverter::flush_buffer()
     {
         if (encode_)
         {
-            std::vector<unsigned char> v = Util::encode((unsigned int*)_buf.data(), _buf.size() * sizeof(Util::Posting));
+            std::vector<unsigned char> v = Util::encode((unsigned int*)_buf.data(), _buf.size() * 3);
             // write it out
             std::ostream_iterator<unsigned char> out_it(os);
             std::copy(v.begin(), v.end(), out_it);
         }
         else
         {
-            // write it out. Is there a bug here?
-            os.write((char*)_buf.data(), _buf.size() * sizeof(Util::Posting));
+            // write it out. untested path
+            os.write((char*)_buf.data(), _buf.size() * (size_t)sizeof(Util::Posting));
         }
     }   
     else
@@ -58,27 +58,31 @@ void BSBI_Inverter::flush_buffer()
         {
             for (const auto& it : _buf)
             {
-                // write out the binary in the form of # of bytes of string, string, docid, freq
+                // write out the binary in the form of docid, freq, # of bytes of string, string
+                // this is kind of dangerous as i'm mixing size_t and unsigned int which are not
+                // guaranteed to be the same size of bytes. Should standardize on one or the other
                 std::string& s = rev_term_termid_map[it.termid];
-                size_t size = s.size();
-                std::vector<unsigned char> v = Util::encode(&size, sizeof(size_t));
+                size_t size = s.size(); 
+                std::vector<unsigned char> v = Util::encode(&it.docid, 2);
+                os.write((char*)v.data(), v.size());
+                v = Util::encode(&size, 1);
                 os.write((char*)v.data(), v.size());
                 os.write(s.c_str(), size);
-                v = Util::encode(&it.docid, 2*sizeof(unsigned int));
-                os.write((char*)v.data(), v.size());
             }
         }
         else
         {
             for (const auto& it : _buf)
             {
-                // write out the binary in the form of # of bytes of string, string, docid, freq
+                // write out the binary in the form of docid, freq, # of bytes of string, string
+                // this is kind of dangerous as i'm mixing size_t and unsigned int which are not
+                // guaranteed to be the same size of bytes. Should standardize on one or the other
                 std::string& s = rev_term_termid_map[it.termid];
                 size_t size = s.size();
-                os.write((char*)&size, sizeof(size));
-                os.write(s.c_str(), size);
                 os.write((char*)&it.docid, sizeof(it.docid));
                 os.write((char*)&it.frequency, sizeof(it.frequency));
+                os.write((char*)&size, sizeof(size));
+                os.write(s.c_str(), size);
             }
         }
         

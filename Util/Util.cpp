@@ -2,7 +2,7 @@
 
 #include "Util.h"
 #include <vector>
-
+#include <stdexcept>
 namespace Util {
     //void print_byte_as_bits(unsigned char val) {
     //    for (int i = 7; 0 <= i; i--) {
@@ -42,12 +42,20 @@ namespace Util {
 	{
 		int start = 0, end = 0, accumulator = 0, size = 1, counter = 0, val;
 		std::vector<unsigned int> result;
+		result.reserve(numints);
 		while (counter < numints)
 		{
+			// if we have read more than enough bytes for an unsigned int,
+			// something is wrong with our input
+			size = end - start + 1;
+			if (size > sizeof(unsigned int))
+			{
+				throw std::invalid_argument("decode");
+			}
 			// check if the highest order bit is 0
+			// if it is, we've reached the end of an int
 			if ((arr[end] >> 7) ^ 1)
 			{
-				size = end - start + 1;
 				for (int i = size - 1; i >= 0; i--)
 				{
 					// clear the highest bit
@@ -63,6 +71,47 @@ namespace Util {
 			++end;
 		}
 		return result;
+	}
+
+	//std::vector<unsigned int> decode(std::istream& is, int numints)
+	std::istream& decode(std::istream& is, std::vector<unsigned int>& vec, int numints)
+	{
+		unsigned char c;
+		std::vector<unsigned char> char_vec;
+		char_vec.reserve(numints * sizeof(unsigned int));
+		int size = 0, counter = 0;
+		try {
+			while (counter < numints && is.get(reinterpret_cast<char&>(c)))
+			{
+				// check if the highest order bit is 0
+				// if it is, we've reached the end of an int
+				char_vec.push_back(c);
+				if ((c >> 7) ^ 1)
+				{
+					++counter;
+					size = 0;
+				}
+				++size;
+				// if we have read more than enough bytes for an unsigned int,
+				// something is wrong with our input
+				if (size > sizeof(unsigned int))
+				{
+					throw std::invalid_argument("decode");
+				}
+			}
+		}
+		catch (std::exception& e)
+		{
+			// do some handling maybe. I think this would most likely happen if
+			// istream ends unexpectedly (i.e. reach eof before expected number
+			// of bytes
+			throw e;
+		}
+		// if char_vec.size() == 0, it means the stream encountered eof before putting
+		// anything in vector
+		if(char_vec.size() > 0 && counter == numints)
+			vec = decode(char_vec.data(), numints);
+		return is;
 	}
 
 	//std::vector<unsigned int> decode(const std::vector<char>& vect)

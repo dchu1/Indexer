@@ -52,16 +52,19 @@ class SPIMI_Inverter :
     public Inverter
 {
 public:
-    SPIMI_Inverter(std::string outpath, std::string outprefix, const int bufsize)
+    SPIMI_Inverter(std::string outpath, std::string outprefix, const int bufsize, const bool encode)
     {
         bufsize_ = bufsize;
         outpath_ = outpath;
         outprefix_ = outprefix;
+        encode_ = encode;
+        outputlist_.open(outpath_ + "\\outputlist.txt", std::ios::out | std::ios::app);
     }
     void invert(unsigned int, std::vector<std::string>&);
     void flush_buffer();
     void flush_all();
 private:
-    std::unordered_map<std::string, std::vector<unsigned int>> _term_buf;
-    unsigned int _memused;
+    void write_to_file(std::ofstream& os, const std::string& s, const unsigned int& docid, const unsigned int& frequency);
+    std::map<std::string, std::vector<unsigned int>> _term_buf;
+    unsigned int _count; // this will be a stand-in for memory used until I find a better way
 };
