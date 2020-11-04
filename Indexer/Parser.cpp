@@ -16,6 +16,8 @@
 #include <boost/algorithm/string.hpp>
 #include "glibmm/ustring.h"
 #include "Inverter.h"
+#include "Tokenizer.h"
+#include "Parser.h"
 
 using namespace std;
 
@@ -33,7 +35,7 @@ vector<string> tokenize_boost(string const& str);
 // ./parser infile outpath buffersize inverter[BSBI, SPIMI], windows_file[0,1], encode[0,1], use_termids[0,1], printouts
 int main(int argc, char* argv[])
 {
-    unsigned int curr_docid = 0;
+    unsigned int curr_docid = 1;
     string input_file(argv[1]);
     string output_path(argv[2]);
     bool windows_file = stoi(argv[5]) == 1;
@@ -204,7 +206,7 @@ void dom_extract(const xmlpp::Node* node, vector<string>& results, vector<string
     const xmlpp::ContentNode* nodeContent = dynamic_cast<const xmlpp::ContentNode*>(node);
     const xmlpp::Element* nodeElement = dynamic_cast<const xmlpp::Element*>(node);
 
-    // if its an element node, we want to check if the tag is blacklisted. If so, return
+    // if its an element node, we want to check if the tag is blacklisted. If so, just return
     if (nodeElement && find(blacklist_tags.begin(), blacklist_tags.end(), nodeElement->get_name()) != blacklist_tags.end())
     {
         return;
@@ -222,7 +224,6 @@ void dom_extract(const xmlpp::Node* node, vector<string>& results, vector<string
     if (!nodeContent)
     {
         // Recurse through child nodes:
-        // There seems to have some kind of memory leak here...
         xmlpp::Node::NodeList list = node->get_children();
         for (xmlpp::Node::NodeList::iterator iter = list.begin(); iter != list.end(); ++iter)
         {
@@ -239,7 +240,6 @@ vector<string> parse(Glib::ustring& str)
     auto parseTimerStart = chrono::steady_clock::now();
     vector<string> blacklist_tags({ "noscript",
         "header",
-        "html",
         "meta",
         "head",
         "input",
@@ -259,7 +259,6 @@ vector<string> parse(Glib::ustring& str)
     catch (exception& e)
     {
         // for now we just squash the error and return an empty vector
-        os << "parse func, " << "exception: " << e.what() << ", string: " << str << '\n';
         parseTime += chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - parseTimerStart).count();
         return results;
     }

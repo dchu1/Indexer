@@ -31,6 +31,12 @@ void SPIMI_Inverter::flush_buffer()
     std::ofstream os(filepath, std::ios::out | std::ios::binary);
     std::cout << filepath << std::endl;
 
+    // Increasing buffer size taken from:
+    // https://stackoverflow.com/questions/11563963/how-to-write-a-large-buffer-into-a-binary-file-in-c-fast/39097696#39097696
+    //const size_t bufsize = 1024 * 1024;
+    //std::unique_ptr<char[]> buf(new char[bufsize]);
+    //os.rdbuf()->pubsetbuf(buf.get(), bufsize);
+
     _count = 0;
     unsigned int counter = 0;
     

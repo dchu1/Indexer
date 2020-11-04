@@ -19,6 +19,9 @@ void BSBI_Inverter::invert(unsigned int docid, std::vector<std::string>& tokens)
     }
 }
 
+// Currently BSBI output is not sorted (which is not a big deal if I could keep the
+// termid mapping in memory. Since I can't BSBI as it is would require an additional sort stage
+// probably either here or as part of the Mergesort step.
 void BSBI_Inverter::flush_buffer()
 {
     std::string filepath = outpath_ + "\\" + outprefix_ + std::to_string(curr_blockid_) + ".bin";

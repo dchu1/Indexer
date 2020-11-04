@@ -1,7 +1,8 @@
 #pragma once
 #include <vector>
 #include <string>
-#include <istream>
+#include <fstream>
+#include "compressor.h"
 
 namespace Util
 {
@@ -45,9 +46,44 @@ namespace Util
             return this->term.compare(rhs.term) == 0 && this->docid == rhs.docid;
         }
     };
-    
 	std::vector<unsigned char> encode(const unsigned int* num, int size);
 	std::vector<unsigned int> decode(const unsigned char* arr, int numints);
-    std::istream& decode(std::istream& is, std::vector<unsigned int>& vec, int numints);
+    std::ifstream& decode(std::ifstream& is, std::vector<unsigned int>& vec, int numints);
 	void print_byte_as_bits(unsigned char val);
+
+    namespace lexicon
+    {
+        struct LexiconMetadata
+        {
+            unsigned int position;
+            unsigned int docid_count;
+            // for now next_lexicon_entry_pos is only used by query engine
+            // might move to someother data structure
+            unsigned int next_lexicon_entry_pos;
+        };
+        struct LexiconEntry
+        {
+            LexiconMetadata metadata;
+            std::string term;
+        };
+        std::ifstream& read_lexicon(std::ifstream& is, LexiconEntry& le);
+    }
+    namespace urltable
+    {
+        struct UrlTableEntry
+        {
+            std::string url;
+            unsigned int size;
+        };
+        std::ifstream& get_url(std::ifstream& is, UrlTableEntry& ute);
+    }
+    namespace index
+    {
+        struct ChunkMetadata
+        {
+            unsigned int lastDocId;
+            unsigned int size;
+        };
+        std::ifstream& get_chunk(std::ifstream& is, std::vector<unsigned int>& vec, unsigned int size);
+    }
 }

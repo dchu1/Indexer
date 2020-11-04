@@ -75,7 +75,7 @@ ifstream& nextPostingStr(ifstream& is, Util::Posting_str& posting)
             is.read(str, vec[2]);
             str[vec[2]] = '\0';
             posting.term = str;
-            delete str;
+            delete[] str;
         }
     }
     catch (exception& e)

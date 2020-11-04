@@ -74,7 +74,7 @@ namespace Util {
 	}
 
 	//std::vector<unsigned int> decode(std::istream& is, int numints)
-	std::istream& decode(std::istream& is, std::vector<unsigned int>& vec, int numints)
+	std::ifstream& decode(std::ifstream& is, std::vector<unsigned int>& vec, int numints)
 	{
 		unsigned char c;
 		std::vector<unsigned char> char_vec;
@@ -82,6 +82,7 @@ namespace Util {
 		int size = 0, counter = 0;
 		try {
 			while (counter < numints && is.get(reinterpret_cast<char&>(c)))
+			//while (counter < numints && is >> c)
 			{
 				// check if the highest order bit is 0
 				// if it is, we've reached the end of an int
@@ -109,34 +110,49 @@ namespace Util {
 		}
 		// if char_vec.size() == 0, it means the stream encountered eof before putting
 		// anything in vector
-		if(char_vec.size() > 0 && counter == numints)
+		if (char_vec.size() > 0 && counter == numints)
 			vec = decode(char_vec.data(), numints);
 		return is;
 	}
 
-	//std::vector<unsigned int> decode(const std::vector<char>& vect)
-	//{
-	//	int start = 0, end = 0, accumulator = 0, size = 1, val;
-	//	std::vector<unsigned int> result;
-	//	for (const auto& byte : vect)
-	//	{
-	//		// check if the highest order bit is 0
-	//		if ((byte >> 7) ^ 1)
-	//		{
-	//			size = end - start + 1;
-	//			for (int i = size - 1; i >= 0; i--)
-	//			{
-	//				// clear the highest bit
-	//				val = vect[start] & ~(1UL << 7);
-	//				accumulator = accumulator + pow(128, i) * val;
-	//				start++;
-	//			}
-	//			result.push_back(accumulator);
-	//			start = end + 1;
-	//			accumulator = 0;
-	//		}
-	//		end++;
-	//	}
-	//	return result;
-	//}
+	namespace lexicon
+	{
+		std::ifstream& read_lexicon(std::ifstream& is, LexiconEntry& le)
+		{
+			std::vector<unsigned int> vec;
+			if (decode(is, vec, 3))
+			{
+				le.metadata.position = vec[0];
+				le.metadata.docid_count = vec[1];
+				std::unique_ptr<char[]> buf(new char[vec[2]+1]);
+				is.read(buf.get(), vec[2]);
+				buf[vec[2]] = '\0';
+				le.term = buf.get();
+			}
+			return is;
+		}
+	}
+	namespace urltable
+	{
+		std::ifstream& get_url(std::ifstream& is, UrlTableEntry& ute)
+		{
+			std::vector<unsigned int> vec;
+			if (decode(is, vec, 2))
+			{
+				ute.size = vec[0];
+				std::unique_ptr<char[]> buf(new char[vec[1] + 1]);
+				is.read(buf.get(), vec[1]);
+				buf[vec[1]] = '\0';
+				ute.url = buf.get();
+			}
+			return is;
+		}
+	}
+	namespace index
+	{
+		std::ifstream& get_chunk(std::ifstream& is, std::vector<unsigned int>& vec, unsigned int size)
+		{
+			return Util::decode(is, vec, size);
+		}
+	}
 }
