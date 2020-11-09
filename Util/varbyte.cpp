@@ -6,12 +6,13 @@ std::vector<unsigned char> Util::compression::varbyte::encode(const unsigned int
 	unsigned char highest_bit_one = 128;
 	for (int it = 0; it < size; it++) {
 		unsigned char multiplicand, temp;
-		int base, size, i;
+		int base, size, i, counter = 0;
 		int remaining_value;
 		remaining_value = *(num + it);
 		i = (int)(log(remaining_value) / log(128)); // largest power of 128
 		while (remaining_value >= 128)
 		{
+			counter++;
 			base = pow(128, i);
 			multiplicand = remaining_value / base;
 			temp = multiplicand | highest_bit_one;
@@ -20,6 +21,9 @@ std::vector<unsigned char> Util::compression::varbyte::encode(const unsigned int
 			i--;
 			//print_byte_as_bits(temp);
 		}
+		if (counter++ > sizeof(unsigned int))
+			throw "encode: wrote too many bytes";
+		counter = 0;
 		temp = (unsigned char)remaining_value;
 		result.push_back(temp);
 		//print_byte_as_bits(temp);
@@ -31,6 +35,7 @@ size_t Util::compression::varbyte::encode(const unsigned int* num, std::vector<u
 {
 	unsigned char highest_bit_one = 128;
 	size_t written_size = 0;
+	unsigned int counter = 0;
 	for (int it = 0; it < size; it++) {
 		unsigned char multiplicand;
 		int base, i;
@@ -39,6 +44,7 @@ size_t Util::compression::varbyte::encode(const unsigned int* num, std::vector<u
 		i = (int)(log(remaining_value) / log(128)); // largest power of 128
 		while (remaining_value >= 128)
 		{
+			++counter;
 			++written_size;
 			base = pow(128, i);
 			multiplicand = remaining_value / base;
@@ -47,6 +53,9 @@ size_t Util::compression::varbyte::encode(const unsigned int* num, std::vector<u
 			i--;
 			//print_byte_as_bits(temp);
 		}
+		if (counter++ > sizeof(unsigned int))
+			throw "encode: wrote too many bytes";
+		counter = 0;
 		++written_size;
 		out_vec.push_back((unsigned char)remaining_value);
 		//print_byte_as_bits(temp);
@@ -60,12 +69,14 @@ size_t Util::compression::varbyte::encode(const unsigned int* num, unsigned char
 	size_t written_size = 0;
 	for (int it = 0; it < size; it++) {
 		unsigned char multiplicand, temp;
+		unsigned int counter = 0;
 		int base, i;
 		int remaining_value;
 		remaining_value = *(num + it);
 		i = (int)(log(remaining_value) / log(128)); // largest power of 128
 		while (remaining_value >= 128)
 		{
+			++counter;
 			++written_size;
 			base = pow(128, i);
 			multiplicand = remaining_value / base;
@@ -76,6 +87,9 @@ size_t Util::compression::varbyte::encode(const unsigned int* num, unsigned char
 			i--;
 			//print_byte_as_bits(temp);
 		}
+		if (counter++ > sizeof(unsigned int))
+			throw "encode: wrote too many bytes";
+		counter = 0;
 		++written_size;
 		temp = (unsigned char)remaining_value;
 		*out_p = temp;
@@ -95,7 +109,7 @@ std::vector<unsigned int> Util::compression::varbyte::decode(const unsigned char
 		// if we have read more than enough bytes for an unsigned int,
 		// something is wrong with our input
 		size = end - start + 1;
-		if (size > sizeof(unsigned int))
+		if (size > sizeof(unsigned int) + 1)
 		{
 			throw std::invalid_argument("decode: overran memory boundary");
 		}
@@ -129,8 +143,13 @@ std::ifstream& Util::compression::varbyte::decode(std::ifstream& is, std::vector
 	int size = 0, counter = 0;
 	try {
 		while (counter < numints && is.get(reinterpret_cast<char&>(c)))
-			//while (counter < numints && is >> c)
 		{
+			// if we have read more than enough bytes for an unsigned int,
+			// something is wrong with our input
+			if (++size > sizeof(unsigned int) + 1)
+			{
+				throw std::invalid_argument("decode: overran memory boundary");
+			}
 			// check if the highest order bit is 0
 			// if it is, we've reached the end of an int
 			char_vec.push_back(c);
@@ -138,13 +157,6 @@ std::ifstream& Util::compression::varbyte::decode(std::ifstream& is, std::vector
 			{
 				++counter;
 				size = 0;
-			}
-			++size;
-			// if we have read more than enough bytes for an unsigned int,
-			// something is wrong with our input
-			if (size > sizeof(unsigned int))
-			{
-				throw std::invalid_argument("decode");
 			}
 		}
 	}

@@ -152,9 +152,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="compressor.h" />
+    <ClInclude Include="PerformanceTimer.h" />
     <ClInclude Include="Util.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="PerformanceTimer.cpp" />
     <ClCompile Include="varbyte.cpp" />
     <ClCompile Include="Util.cpp" />
   </ItemGroup>

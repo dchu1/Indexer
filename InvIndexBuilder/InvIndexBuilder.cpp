@@ -136,32 +136,41 @@ int main(int argc, char* argv[])
                     size_t size = std::min(blocksize, block_docids.size());
                     size_t written_size = 0;
 
-                    // build and encode chunks
-                    for (int p = 0; p < block_docids.size(); p+=size)
+                    try
                     {
-                        // update the size
-                        size = std::min(blocksize, block_docids.size() - p);
-
-                        // turn our docids into docid differences
-                        int prev_term = block_docids[p];
-                        int temp;
-                        for (int i = 1; i < size; i++)
+                        // build and encode chunks
+                        for (int p = 0; p < block_docids.size(); p += size)
                         {
-                            temp = block_docids[p+i];
-                            block_docids[p+i] -= prev_term;
-                            prev_term = temp;
+                            // update the size
+                            size = std::min(blocksize, block_docids.size() - p);
+
+                            // turn our docids into docid differences
+                            int prev_term = block_docids[p];
+                            int temp;
+                            for (int i = 1; i < size; i++)
+                            {
+                                temp = block_docids[p + i];
+                                block_docids[p + i] -= prev_term;
+                                prev_term = temp;
+                            }
+
+                            // insert data into our chunk
+                            written_size += compress->encode(block_docids.data() + p, encoded_data, size);
+                            written_size += compress->encode(block_frequencies.data() + p, encoded_data, size);
+
+                            // insert metadata last docid,# bytes
+                            metadata.push_back(prev_term);
+                            metadata.push_back(written_size);
+
+                            curr_position += written_size;
+                            written_size = 0;
                         }
-
-                        // insert data into our chunk
-                        written_size += compress->encode(block_docids.data() + p, encoded_data, size);
-                        written_size += compress->encode(block_frequencies.data() + p, encoded_data, size);
-
-                        // insert metadata last docid,# bytes
-                        metadata.push_back(prev_term);
-                        metadata.push_back(written_size);
-
-                        curr_position += written_size;
-                        written_size = 0;
+                    }
+                    catch (std::exception& e) 
+                    {
+                        std::string s(e.what());
+                        s += " for term " + current_word;
+                        throw s;
                     }
                     // flush to file
                     // write metadata
@@ -172,7 +181,6 @@ int main(int argc, char* argv[])
 
                     // write our lexicon entry out to file
                     write_to_lexicon(lexicon_os, current_word, start_position, doc_counter);
-                    std::cout << current_word << ", pos: " << start_position << std::endl;
                     start_position = curr_position;
                     current_word = ps.term;
                     doc_counter = 1;

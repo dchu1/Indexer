@@ -2,7 +2,7 @@
 #include <boost/algorithm/string.hpp>
 #include <algorithm>
 
-std::vector<std::string> tokenize_boost(std::string const& str)
+std::vector<std::string> BoostTokenizer::tokenize(std::string const& str)
 {
     auto results = std::vector<std::string>{};
     boost::split(results, str, boost::is_any_of(" `:.,?!()/\\-_[]{}\"\'\r\n\t"));

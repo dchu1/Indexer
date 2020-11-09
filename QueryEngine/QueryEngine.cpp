@@ -5,6 +5,11 @@
 #include "QueryEngine.h"
 #include "Util.h"
 #include <array>
+#include <queue>
+#include <iterator>
+#include <sstream>
+#include <algorithm>
+#include "PageStorage.h"
 
 void Query::DefaultQEngine::loadLexicon(const std::string& lexiconFilePath)
 {
@@ -12,40 +17,75 @@ void Query::DefaultQEngine::loadLexicon(const std::string& lexiconFilePath)
 	// check if open
 	if (lexicon)
 	{
-		// read our lexicon data into the lexicon map
-		Util::lexicon::LexiconEntry le;
-		std::string prev_term = "";
-		while (lexicon)
+		try
 		{
-			// Read an entry from our lexicon and store the metadata
-			Util::lexicon::read_lexicon(lexicon, le);
-			_lexicon_map[le.term] = le.metadata;
-			
-			// update the previous term's metadata with the current term's position.
-			// note that we are creating a dummy entry for "" for the first term.
-			_lexicon_map[prev_term].next_lexicon_entry_pos = le.metadata.position;
-			prev_term = le.term;
+			// read our lexicon data into the lexicon map
+			Util::lexicon::LexiconEntry le;
+			std::string prev_term = "";
+			while (lexicon)
+			{
+				// Read an entry from our lexicon and store the metadata
+				Util::lexicon::read_lexicon(lexicon, le);
+				_lexicon_map[le.term] = le.metadata;
+
+				// update the previous term's metadata with the current term's position.
+				// note that we are creating a dummy entry for "" for the first term.
+				_lexicon_map[prev_term].next_lexicon_entry_pos = le.metadata.position;
+				prev_term = le.term;
+				if (le.term.compare("48") == 0)
+					std::cout << "48" << std::endl;
+			}
+		}
+		catch (std::exception& e)
+		{
+			std::cout << e.what() << " Last read term: " + (*_lexicon_map.rbegin()).first << std::endl;
+			throw e;
 		}
 	}
 	else
 		throw "Unable to open lexicon";
 }
 
-void Query::DefaultQEngine::loadUrls(const std::string& urlTableFilePath)
+unsigned int Query::DefaultQEngine::loadUrls(const std::string& urlTableFilePath)
 {
-	std::ifstream urltable(urlTableFilePath, std::ios::in | std::ios::binary);
-	// check if open
-	if (urltable)
-	{
-		Util::urltable::UrlTableEntry ute;
-		while (urltable)
-		{
-			Util::urltable::get_url(urltable, ute);
-			_url_table.push_back(ute);
-		}
-	}
-	else
-		throw "Unable to open url table";
+	//std::ifstream urltable(urlTableFilePath, std::ios::in | std::ios::binary);
+	//// check if open
+	//if (urltable)
+	//{
+	//	unsigned int length_accumulator = 0;
+	//	Util::urltable::UrlTableEntry ute;
+	//	while (urltable)
+	//	{
+	//		Util::urltable::get_url(urltable, ute);
+	//		length_accumulator += ute.size;
+	//		_url_table.push_back(ute);
+	//	}
+	//	_scorer->_N = _url_table.size();
+	//	_scorer->_davg = length_accumulator / _url_table.size();
+	//}
+	//else
+	//	throw "Unable to open url table";
+
+	//std::ifstream url_is(urlTableFilePath, std::ios::in);
+	//// check if open
+	//std::string line;
+	//Util::urltable::UrlTableEntry ute;
+	//unsigned int length_accumulator = 0;
+	//if (url_is)
+	//{
+	//	while (getline(url_is, line, ','))
+	//	{
+	//		ute.url = line;
+	//		getline(url_is, line);
+	//		ute.size = stoi(line);
+	//		length_accumulator += ute.size;
+	//		_url_table.push_back(ute);
+	//	}
+	//	return length_accumulator / _url_table.size();
+	//}
+	//else
+	//	throw "Unable to open url table";
+	return 0;
 }
 
 Query::ListPointer Query::DefaultQEngine::openList(const std::string& term)
@@ -62,7 +102,7 @@ Query::ListPointer Query::DefaultQEngine::openList(const std::string& term)
 			lp.beg_pos = _lexicon_map[term].position;
 			lp.end_pos = _lexicon_map[term].next_lexicon_entry_pos;
 			lp.compressed = false;
-			lp.freq = _lexicon_map[term].docid_count;
+			lp.num_docs = _lexicon_map[term].docid_count;
 			lp.curr_docid = 0;
 			lp.curr_chunk_idx = 0;
 			lp.curr_max_docid = 0;
@@ -112,7 +152,7 @@ unsigned int Query::DefaultQEngine::nextGEQ(Query::ListPointer& lp, unsigned int
 	// map.upperbound is O(logn). It finds the closest value > what you pass
 	auto it = lp.chunk_positions.upper_bound(k-1);
 	if (it == lp.chunk_positions.end())
-		std::numeric_limits<unsigned int>::infinity();
+		return std::numeric_limits<unsigned int>::infinity();
 
 	// check whether we are in the correct chunk. If not, we need to seek
 	// and read in and decompress chunk
@@ -126,12 +166,15 @@ unsigned int Query::DefaultQEngine::nextGEQ(Query::ListPointer& lp, unsigned int
 
 	// finally scan through the chunk until we find a docid >= k
 	// if lp.curr_docid > k, we will start from beginning of chunk (since can't calculate docid reverse)
-	for (auto it = lp.curr_chunk.begin()+1; it != lp.curr_chunk.end(); it++)
+	unsigned int accumulator = 0;
+	for (auto it = lp.curr_chunk.begin(); it != lp.curr_chunk.end(); it++)
 	{
-		lp.curr_docid += *it;
-		if (*it >= k)
+		accumulator += *it;
+		if (accumulator >= k)
 			break;
+		
 	}
+	lp.curr_docid = accumulator;
 	return lp.curr_docid;
 }
 
@@ -139,23 +182,170 @@ unsigned int Query::DefaultQEngine::getFreq(ListPointer& lp)
 {
 	// if there is a cached chunk, return the current posting's frequency,
 	// whose index is the current posting + 1/2 the size
-	if (lp.curr_docid == 0)
+	if (lp.curr_docid > 0)
 		return lp.curr_chunk[lp.curr_chunk_idx + lp.curr_chunk.size() / 2];
 	else
 		throw "No current posting";
 }
 
-int main()
+std::stack<Page> Query::DefaultQEngine::getTopKConjunctive(std::vector<std::string> query, int k)
 {
-	Util::compression::CompressorCreator* cc = new Util::compression::VarbyteCreator();
-	Query::DefaultQEngine qe("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\debug\\index.bin", cc);
-	qe.loadLexicon("D:\\Users\\admin\\Documents\\NYU\\Fall_2020\\Search_Engines\\HW\\HW2\\debug\\lexicon.bin");
-	auto lp = qe.openList("&");
-	qe.nextGEQ(lp, 10);
-	std::cout << qe.getFreq(lp) << std::endl;
-	delete cc;
+	std::vector<Query::ListPointer> lp_vec;
+	std::priority_queue<
+		std::pair<double, Page>,
+		std::vector<std::pair<double, Page>>,
+		std::greater<std::pair<double, Page>>> topk_pq;	// priority queue uses pair <score, docid>
+	unsigned int d = 0, max_docid, min_idx = 0, curr_docid;
+	double min_score, score;
+	std::stack<Page> page_stack;
+
+	// load list pointers
+	for (int i = 0; i < query.size(); i++)
+	{
+		// create a list pointer for each term
+		lp_vec.push_back(openList(query[i]));
+		// update the min_idx if necessary (we want to know the shortest list)
+		if (lp_vec.back().num_docs < lp_vec[min_idx].num_docs)
+			min_idx = i;
+	}
+	// update max_docid with the largest docid in the smallest inverted list
+	max_docid = lp_vec[min_idx].chunk_positions.rbegin()->first;
+
+	curr_docid = nextGEQ(lp_vec[min_idx], 1);
+	while (curr_docid <= max_docid)
+	{
+		// iterate through each list pointer until we get a docid that is not equal to our current docid
+		for (int i = 0; i < lp_vec.size(); i++)
+		{
+			if (i != min_idx)
+			{
+				d = nextGEQ(lp_vec[i], curr_docid);
+				if (d != curr_docid)
+					break;
+			}
+		}
+		
+		// if d > curr_docid, one of our lists does not contain curr_docid, so get next docid in short list
+		if (d > curr_docid)
+			curr_docid = nextGEQ(lp_vec[min_idx], d);
+		else // otherwise we did find a common docid, so calculate score
+		{
+			Page p = _ps->getDocument(curr_docid);
+			std::vector<double> args;
+			args.reserve(lp_vec.size() * 2 + 1);
+			// push document length
+			args.push_back(p.size);
+			// push the rest of the args
+			for (auto& lp : lp_vec)
+			{
+				args.push_back(static_cast<double>(lp.num_docs));
+				args.push_back(static_cast<double>(getFreq(lp)));
+			}
+			// get the score
+			score = _scorer->score(args);
+			// if queue size < k, push onto queue
+			if (topk_pq.size() < k)
+				topk_pq.emplace(std::pair<double, Page> {score, p});
+			// otherwise we need to check whether this score is higher than the smallest score in queue
+			else if (score > topk_pq.top().first)
+			{
+				topk_pq.pop();
+				topk_pq.emplace(std::pair<double, Page> {score, p});
+			}
+			++curr_docid;
+		}
+	}
+
+	// close list pointers
+	for (auto& lp : lp_vec)
+		closeList(lp);
+
+	// reverse pq and return docids
+	while (!topk_pq.empty())
+	{
+		page_stack.push(topk_pq.top().second);
+		topk_pq.pop();
+	}
+	return page_stack;
 }
 
+std::stack<Page> Query::DefaultQEngine::getTopKDisjunctive(std::vector<std::string> query, int k)
+{
+	std::vector<Query::ListPointer> lp_vec;
+	std::priority_queue<
+		std::pair<double, Page>,
+		std::vector<std::pair<double, Page>>,
+		std::greater<std::pair<double, Page>>> topk_pq;	// priority queue uses pair <score, docid>
+	std::priority_queue<
+		unsigned int,
+		std::vector<unsigned int>,
+		std::greater<unsigned int>> docid_pq;	// priority queue
+
+	unsigned int d, min_docid, min_idx = 0, curr_docid = 0;
+	double min_score, score;
+	std::stack<Page> page_stack;
+
+	// load list pointers
+	// update docid_pq with the smallest docid in each inverted list
+	for (int i = 0; i < query.size(); i++)
+	{
+		// create a list pointer for each term
+		lp_vec.push_back(openList(query[i]));
+		// update the min_idx if necessary (we want to know the shortest list)
+		unsigned int docid = nextGEQ(lp_vec.back(), 0);
+		docid_pq.push(docid);
+	}
+
+	// iterate through our docid_pq, getting the smallest docid and calculate the scores
+	while (!docid_pq.empty())
+	{
+		// get the min docid in our priority queue
+		curr_docid = docid_pq.top();
+		docid_pq.pop();
+		Page p = _ps->getDocument(curr_docid);
+		std::vector<double> args;
+		// push document length
+		args.push_back(p.size);
+
+		// iterate through each list pointer. construct our args from each lp that has our curr_docid
+		for (auto& lp : lp_vec)
+		{
+			// if the lp's curr docid == min docid, get the frequency, then advance the pointer
+			if (lp.curr_docid == curr_docid)
+			{
+				args.push_back(static_cast<double>(lp.num_docs));
+				args.push_back(static_cast<double>(getFreq(lp)));
+				unsigned int docid = nextGEQ(lp, curr_docid+1);
+				if (docid < std::numeric_limits<unsigned int>::max())
+					docid_pq.push(docid);
+			}
+		}
+
+		// score curr_docid
+		score = _scorer->score(args);
+		// if queue size < k, push onto queue
+		if (topk_pq.size() < k)
+			topk_pq.emplace(std::pair<double, Page> {score, p});
+		// otherwise we need to check whether this score is higher than the smallest score in queue
+		else if (score > topk_pq.top().first)
+		{
+			topk_pq.pop();
+			topk_pq.emplace(std::pair<double, Page> {score, p});
+		}
+	}
+
+	// close list pointers
+	for (auto& lp : lp_vec)
+		closeList(lp);
+
+	// reverse pq and return docids
+	while (!topk_pq.empty())
+	{
+		page_stack.push(topk_pq.top().second);
+		topk_pq.pop();
+	}
+	return page_stack;
+}
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
 // Debug program: F5 or Debug > Start Debugging menu
 

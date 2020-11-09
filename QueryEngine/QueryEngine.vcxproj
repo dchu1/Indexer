@@ -141,7 +141,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="QueryEngine.cpp" />
+    <ClCompile Include="Scorer.cpp" />
+    <ClCompile Include="SnippetGenerator.cpp" />
+    <ClCompile Include="SQLitePageStorage.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Util\Util.vcxproj">
@@ -149,7 +153,11 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="PageStorage.h" />
     <ClInclude Include="QueryEngine.h" />
+    <ClInclude Include="Scorer.h" />
+    <ClInclude Include="SnippetGenerator.h" />
+    <ClInclude Include="SQLitePageStorage.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
