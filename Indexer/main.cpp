@@ -10,7 +10,7 @@
 
 using namespace std;
 
-// ./parser infile outpath buffersize inverter[BSBI, SPIMI], windows_file[0,1], encode[0,1], use_termids[0,1], printouts
+// ./parser infile outpath buffersize inverter[BSBI, SPIMI], windows_file[0,1], encode[0,1], batchsize
 int main(int argc, char* argv[])
 {
     // initialize variables and read command line args
@@ -19,7 +19,6 @@ int main(int argc, char* argv[])
     string output_path(argv[2]);
     bool windows_file = stoi(argv[5]) == 1;
     bool encode = stoi(argv[6]) == 1;
-    bool use_termids = stoi(argv[7]) == 1;
     ofstream url_os(output_path + "\\urltable.bin", ios::out | ofstream::binary);
     Tokenizer* tok = new BoostTokenizer();
     Parser parser = Parser(tok);
@@ -73,14 +72,19 @@ int main(int argc, char* argv[])
                         // multiple statements inside the string; can be null)
 
     // choose our inverter based on command line args
+    Util::compression::compressor* cc;
+    if (encode)
+        cc = new Util::compression::varbyte();
+    else
+        cc = nullptr;
     Inverter* inverter;
     if (string(argv[4]).compare("BSBI") == 0)
     {
-        inverter = new BSBI_Inverter(output_path, "output", stoi(argv[3]), encode, use_termids);
+        inverter = new BSBI_Inverter(output_path, "output", stoi(argv[3]), cc);
     }
     else
     {
-        inverter = new SPIMI_Inverter(output_path, "output", stoi(argv[3]), encode);
+        inverter = new SPIMI_Inverter(output_path, "output", stoi(argv[3]), cc);
     }
 
     // https://stackoverflow.com/questions/11040703/convert-unicode-to-char/11040983#11040983
@@ -175,7 +179,7 @@ int main(int argc, char* argv[])
             invertTime += chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - invertTimerStart).count();
 
             // print out some times to keep track of progress and speed
-            if ((curr_docid + 1) % stoi(argv[8]) == 0)
+            if ((curr_docid + 1) % stoi(argv[7]) == 0)
             {
                 t2 = chrono::steady_clock::now();
                 rc = sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, NULL);

@@ -46,10 +46,6 @@ namespace Util
             return this->term.compare(rhs.term) == 0 && this->docid == rhs.docid;
         }
     };
-	std::vector<unsigned char> encode(const unsigned int* num, int size);
-	std::vector<unsigned int> decode(const unsigned char* arr, int numints);
-    std::ifstream& decode(std::ifstream& is, std::vector<unsigned int>& vec, int numints);
-	void print_byte_as_bits(unsigned char val);
 
     namespace lexicon
     {
@@ -66,7 +62,7 @@ namespace Util
             LexiconMetadata metadata;
             std::string term;
         };
-        std::ifstream& read_lexicon(std::ifstream& is, LexiconEntry& le);
+        std::ifstream& read_lexicon(std::ifstream& is, LexiconEntry& le, Util::compression::compressor* compressor);
     }
     namespace urltable
     {

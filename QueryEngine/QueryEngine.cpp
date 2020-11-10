@@ -11,29 +11,60 @@
 #include <algorithm>
 #include "PageStorage.h"
 
-void Query::DefaultQEngine::loadLexicon(const std::string& lexiconFilePath)
+std::string Query::DefaultQEngine::generateSnippet(std::string& docbody, std::vector<std::string> q) const
 {
+	
+}
+
+void Query::DefaultQEngine::loadLexicon(const std::string& lexiconFilePath, Util::compression::compressor* compressor)
+{
+	//std::ifstream lexicon(lexiconFilePath, std::ios::in | std::ios::binary);
+	//// check if open
+	//if (lexicon)
+	//{
+	//	try
+	//	{
+	//		// read our lexicon data into the lexicon map
+	//		Util::lexicon::LexiconEntry le;
+	//		std::string prev_term = "";
+	//		while (lexicon)
+	//		{
+	//			// Read an entry from our lexicon and store the metadata
+	//			Util::lexicon::read_lexicon(lexicon, le, compressor);
+	//			_lexicon_map[le.term] = le.metadata;
+
+	//			// update the previous term's metadata with the current term's position.
+	//			// note that we are creating a dummy entry for "" for the first term.
+	//			_lexicon_map[prev_term].next_lexicon_entry_pos = le.metadata.position;
+	//			prev_term = le.term;
+	//		}
+	//	}
+	//	catch (std::exception& e)
+	//	{
+	//		std::cout << e.what() << " Last read term: " + (*_lexicon_map.rbegin()).first << std::endl;
+	//		throw e;
+	//	}
+	//}
+	//else
+	//	throw "Unable to open lexicon";
+
 	std::ifstream lexicon(lexiconFilePath, std::ios::in | std::ios::binary);
 	// check if open
 	if (lexicon)
 	{
 		try
 		{
-			// read our lexicon data into the lexicon map
+			// read our lexicon data into the lexicon vectors
 			Util::lexicon::LexiconEntry le;
-			std::string prev_term = "";
 			while (lexicon)
 			{
-				// Read an entry from our lexicon and store the metadata
-				Util::lexicon::read_lexicon(lexicon, le);
-				_lexicon_map[le.term] = le.metadata;
-
-				// update the previous term's metadata with the current term's position.
-				// note that we are creating a dummy entry for "" for the first term.
-				_lexicon_map[prev_term].next_lexicon_entry_pos = le.metadata.position;
-				prev_term = le.term;
-				if (le.term.compare("48") == 0)
-					std::cout << "48" << std::endl;
+				// Read an entry from our lexicon and store the metadata (including updating the previous
+				// term's end position in the index.
+				Util::lexicon::read_lexicon(lexicon, le, compressor);
+				if (_lexicon_values.size() > 0)
+					_lexicon_values.back().next_lexicon_entry_pos = le.metadata.position;
+				_lexicon_terms.push_back(le.term);
+				_lexicon_values.push_back(le.metadata);
 			}
 		}
 		catch (std::exception& e)
@@ -46,86 +77,54 @@ void Query::DefaultQEngine::loadLexicon(const std::string& lexiconFilePath)
 		throw "Unable to open lexicon";
 }
 
-unsigned int Query::DefaultQEngine::loadUrls(const std::string& urlTableFilePath)
-{
-	//std::ifstream urltable(urlTableFilePath, std::ios::in | std::ios::binary);
-	//// check if open
-	//if (urltable)
-	//{
-	//	unsigned int length_accumulator = 0;
-	//	Util::urltable::UrlTableEntry ute;
-	//	while (urltable)
-	//	{
-	//		Util::urltable::get_url(urltable, ute);
-	//		length_accumulator += ute.size;
-	//		_url_table.push_back(ute);
-	//	}
-	//	_scorer->_N = _url_table.size();
-	//	_scorer->_davg = length_accumulator / _url_table.size();
-	//}
-	//else
-	//	throw "Unable to open url table";
-
-	//std::ifstream url_is(urlTableFilePath, std::ios::in);
-	//// check if open
-	//std::string line;
-	//Util::urltable::UrlTableEntry ute;
-	//unsigned int length_accumulator = 0;
-	//if (url_is)
-	//{
-	//	while (getline(url_is, line, ','))
-	//	{
-	//		ute.url = line;
-	//		getline(url_is, line);
-	//		ute.size = stoi(line);
-	//		length_accumulator += ute.size;
-	//		_url_table.push_back(ute);
-	//	}
-	//	return length_accumulator / _url_table.size();
-	//}
-	//else
-	//	throw "Unable to open url table";
-	return 0;
-}
-
 Query::ListPointer Query::DefaultQEngine::openList(const std::string& term)
 {
 	// check to make sure the term exists in our lexicon
 	if (_lexicon_map.find(term) != _lexicon_map.end())
 	{
 		Query::ListPointer lp;
+		std::ifstream ind_is;
+		unsigned int num_chunks;
 		// open our filestream to index file
-		lp.is.open(_indexFilePath, std::ios::in | std::ios::binary);
-		if (lp.is)
+		ind_is.open(_indexFilePath, std::ios::in | std::ios::binary);
+		if (ind_is)
 		{
 			// initialize our lp
 			lp.beg_pos = _lexicon_map[term].position;
 			lp.end_pos = _lexicon_map[term].next_lexicon_entry_pos;
-			lp.compressed = false;
 			lp.num_docs = _lexicon_map[term].docid_count;
-			lp.curr_docid = 0;
-			lp.curr_chunk_idx = 0;
-			lp.curr_max_docid = 0;
+			lp.curr_chunk_docid = 0;
+			lp.curr_chunk_pos = 0;
+			lp.curr_chunk_max_docid = 0; 
 			lp.curr_chunk.reserve(128);
 
 			// seek to correct position in file
-			lp.is.seekg(lp.beg_pos, lp.is.beg);
-
+			ind_is.seekg(lp.beg_pos, ind_is.beg);
+			
 			// read in the first int which is the # of blocks
-			lp.is.read((char*)&lp.num_chunks, sizeof(unsigned int));
-			//lp.is >> lp.num_chunks;
+			_compressor->decode(ind_is, lp.curr_chunk, 1);
+			num_chunks = lp.curr_chunk[0];
+			lp.curr_chunk.pop_back();
 
 			// read in the metadata and store:
-			// map[lastdocid] = (size, relative position)
-			std::array<unsigned int,2> pos;
-			// accumulates the relative position from start of file by adding size
-			unsigned int accumulator = (lp.num_chunks * 2 + 1) * sizeof(unsigned int);;
-			for (int i = 0; i < lp.num_chunks; i++)
+			std::vector<unsigned int> pos;
+			pos.reserve(2);
+			unsigned int accumulator = 0;
+			for (int i = 0; i < num_chunks; i++)
 			{
-				lp.is.read((char*)&pos[0], sizeof(unsigned int)*2);
+				_compressor->decode(ind_is, pos, 2);
 				lp.chunk_positions[pos[0]] = PositionEntry{ pos[1], accumulator };
 				accumulator += pos[1];
+				pos.clear();
 			}
+
+			// read in the chunks of data. probablby a better way to do this
+			unsigned char c;
+			unsigned int counter = 0;
+			unsigned int inv_list_size = lp.end_pos - ind_is.tellg();
+			lp.inv_list.reserve(inv_list_size);
+			while (ind_is.get((char&)c) && counter++ < inv_list_size)
+				lp.inv_list.push_back(c);
 			return lp;
 		}
 		else
@@ -148,42 +147,53 @@ unsigned int Query::DefaultQEngine::nextGEQ(Query::ListPointer& lp, unsigned int
 {
 	// check which chunk's last docid is the closest to target docid
 	// if we get an end iterator, it means no chunk has a docid >= to k,
-	// so just return infinity
+	// so just return max int size (which hopefully is not a valid docid)
 	// map.upperbound is O(logn). It finds the closest value > what you pass
 	auto it = lp.chunk_positions.upper_bound(k-1);
 	if (it == lp.chunk_positions.end())
-		return std::numeric_limits<unsigned int>::infinity();
+		return std::numeric_limits<unsigned int>::max();
 
 	// check whether we are in the correct chunk. If not, we need to seek
 	// and read in and decompress chunk
-	else if (it->first != lp.curr_max_docid)
+	if (it->first != lp.curr_chunk_max_docid)
 	{
-		lp.is.seekg(it->second.relative_position + lp.beg_pos);
-		std::vector<char> temp_char_vec;
-		_compressor->decode(lp.is, lp.curr_chunk, it->second.size);
-		lp.curr_docid = lp.curr_chunk[0]; // set curr posting to the first docid in chunk
+		// unencode data into current chunk
+		lp.curr_chunk.clear();
+		_compressor->decode_bytes(&lp.inv_list[it->second.relative_position], lp.curr_chunk, it->second.size);
+		lp.curr_chunk_docid = lp.curr_chunk[0]; // set curr posting to the first docid in chunk
+		lp.curr_chunk_pos = 0;
+		lp.curr_chunk_max_docid = it->first;
+
+		// turn docid differences into absolute docids
+		unsigned int accumulator = 0;
+		for (int i = 0; i < lp.curr_chunk.size() / 2; i++)
+		{
+			accumulator += lp.curr_chunk[i];
+			lp.curr_chunk[i] = accumulator;
+		}
 	}
 
 	// finally scan through the chunk until we find a docid >= k
 	// if lp.curr_docid > k, we will start from beginning of chunk (since can't calculate docid reverse)
-	unsigned int accumulator = 0;
-	for (auto it = lp.curr_chunk.begin(); it != lp.curr_chunk.end(); it++)
+	unsigned int starting_pos_offset = 0;
+	if (lp.curr_chunk_docid <= k)
+		starting_pos_offset = lp.curr_chunk_pos;
+	for (auto it = lp.curr_chunk.begin() + starting_pos_offset; it != lp.curr_chunk.end(); it++, lp.curr_chunk_pos++)
 	{
-		accumulator += *it;
-		if (accumulator >= k)
+		if (*it >= k)
 			break;
 		
 	}
-	lp.curr_docid = accumulator;
-	return lp.curr_docid;
+	lp.curr_chunk_docid = lp.curr_chunk[lp.curr_chunk_pos];
+	return lp.curr_chunk_docid;
 }
 
 unsigned int Query::DefaultQEngine::getFreq(ListPointer& lp)
 {
 	// if there is a cached chunk, return the current posting's frequency,
-	// whose index is the current posting + 1/2 the size
-	if (lp.curr_docid > 0)
-		return lp.curr_chunk[lp.curr_chunk_idx + lp.curr_chunk.size() / 2];
+	// whose index is the current chunk idx + 1/2 the chunk size
+	if (lp.curr_chunk_docid > 0)
+		return lp.curr_chunk[lp.curr_chunk_pos + lp.curr_chunk.size() / 2];
 	else
 		throw "No current posting";
 }
@@ -252,7 +262,7 @@ std::stack<Page> Query::DefaultQEngine::getTopKConjunctive(std::vector<std::stri
 				topk_pq.pop();
 				topk_pq.emplace(std::pair<double, Page> {score, p});
 			}
-			++curr_docid;
+			curr_docid = nextGEQ(lp_vec[min_idx], curr_docid + 1);
 		}
 	}
 
@@ -291,7 +301,6 @@ std::stack<Page> Query::DefaultQEngine::getTopKDisjunctive(std::vector<std::stri
 	{
 		// create a list pointer for each term
 		lp_vec.push_back(openList(query[i]));
-		// update the min_idx if necessary (we want to know the shortest list)
 		unsigned int docid = nextGEQ(lp_vec.back(), 0);
 		docid_pq.push(docid);
 	}
@@ -311,7 +320,7 @@ std::stack<Page> Query::DefaultQEngine::getTopKDisjunctive(std::vector<std::stri
 		for (auto& lp : lp_vec)
 		{
 			// if the lp's curr docid == min docid, get the frequency, then advance the pointer
-			if (lp.curr_docid == curr_docid)
+			if (lp.curr_chunk_docid == curr_docid)
 			{
 				args.push_back(static_cast<double>(lp.num_docs));
 				args.push_back(static_cast<double>(getFreq(lp)));

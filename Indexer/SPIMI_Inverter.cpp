@@ -96,17 +96,20 @@ void SPIMI_Inverter::flush_buffer()
 
 void SPIMI_Inverter::write_to_file(std::ofstream& os, const std::string& s, const unsigned int& docid, const unsigned int& frequency)
 {
-    if (encode_)
+    if (encode_ != nullptr)
     {
         // write out the binary in the form of docid, freq, # of bytes of string, string
         // this is kind of dangerous as i'm mixing size_t and unsigned int which are not
         // guaranteed to be the same size of bytes. Should standardize on one or the other
         size_t size = s.size();
-        std::vector<unsigned char> v = Util::encode(&docid, 1);
+        std::vector<unsigned char> v;
+        encode_->encode(&docid, v, 1);
         os.write((char*)v.data(), v.size());
-        v = Util::encode(&frequency, 1);
+        v.clear();
+        encode_->encode(&frequency, v, 1);
         os.write((char*)v.data(), v.size());
-        v = Util::encode(&size, 1);
+        v.clear();
+        encode_->encode(&size, v, 1);
         os.write((char*)v.data(), v.size());
         os.write(s.c_str(), size);
     }

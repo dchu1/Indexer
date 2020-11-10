@@ -36,9 +36,10 @@ void BSBI_Inverter::flush_buffer()
     // should we use termids
     if (_use_termids)
     {
-        if (encode_)
+        if (encode_ != nullptr)
         {
-            std::vector<unsigned char> v = Util::encode((unsigned int*)_buf.data(), _buf.size() * 3);
+            std::vector<unsigned char> v;
+            encode_->encode((unsigned int*)_buf.data(), v, _buf.size() * 3);
             // write it out
             std::ostream_iterator<unsigned char> out_it(os);
             std::copy(v.begin(), v.end(), out_it);
@@ -57,7 +58,7 @@ void BSBI_Inverter::flush_buffer()
         {
             rev_term_termid_map[it.second] = it.first;
         }
-        if (encode_)
+        if (encode_ != nullptr)
         {
             for (const auto& it : _buf)
             {
@@ -66,9 +67,10 @@ void BSBI_Inverter::flush_buffer()
                 // guaranteed to be the same size of bytes. Should standardize on one or the other
                 std::string& s = rev_term_termid_map[it.termid];
                 size_t size = s.size(); 
-                std::vector<unsigned char> v = Util::encode(&it.docid, 2);
+                std::vector<unsigned char> v;
+                encode_->encode(&it.docid, v, 2);
                 os.write((char*)v.data(), v.size());
-                v = Util::encode(&size, 1);
+                encode_->encode(&size, v, 1);
                 os.write((char*)v.data(), v.size());
                 os.write(s.c_str(), size);
             }

@@ -30,18 +30,20 @@ using namespace std;
 //    }
 //}
 
-void write_to_file(ofstream& os, Util::Posting_str& ps, bool encode)
+void write_to_file(ofstream& os, Util::Posting_str& ps, Util::compression::compressor* encoder)
 {
     // This code adapted from SPIMI_Inverter. Might want to make this a util function
-    if (encode)
+    if (encoder != nullptr)
     {
         // write out the binary in the form of docid, freq, # of bytes of string, string
         // this is kind of dangerous as i'm mixing size_t and unsigned int which are not
         // guaranteed to be the same size of bytes. Should standardize on one or the other
         size_t size = ps.term.size();
-        std::vector<unsigned char> v = Util::encode(&ps.docid, 2);
+        std::vector<unsigned char> v;
+        encoder->encode(&ps.docid, v, 2);
         os.write((char*)v.data(), v.size());
-        v = Util::encode(&size, 1);
+        v.clear();
+        encoder->encode(&size, v, 1);
         os.write((char*)v.data(), v.size());
         os.write(ps.term.c_str(), size);
     }
@@ -58,14 +60,14 @@ void write_to_file(ofstream& os, Util::Posting_str& ps, bool encode)
     }
 }
 
-ifstream& nextPostingStr(ifstream& is, Util::Posting_str& posting)
+ifstream& nextPostingStr(ifstream& is, Util::Posting_str& posting, Util::compression::compressor* encoder)
 {
     try {
         int counter = 0;
         // read in docid, freq, # of bytes of string
         std::vector<unsigned int>vec;
         vec.reserve(3);
-        if (Util::decode(is, vec, 3))
+        if (encoder->decode(is, vec, 3))
         {
             posting.docid = vec[0];
             posting.frequency = vec[1];
@@ -100,6 +102,7 @@ int main(int argc, char* argv[])
     ifstream filelist_is(argv[1], ios::in);
     string outpath = argv[2];
     ofstream outfilelist_os(outpath + "\\mergefiles.txt", ios::out);
+    Util::compression::compressor* cc = new Util::compression::varbyte();
 
     // Read in the file that lists our input files
     if (filelist_is)
@@ -133,7 +136,7 @@ int main(int argc, char* argv[])
                 for (int i = 0; i < ifstream_vec.size(); i++)
                 {
                     Util::Posting_str ps;
-                    if (nextPostingStr(ifstream_vec[i], ps))
+                    if (nextPostingStr(ifstream_vec[i], ps, cc))
                         pq.push(heap_entry<Util::Posting_str>{i, ps});
                     //else
                     //{
@@ -152,7 +155,7 @@ int main(int argc, char* argv[])
                 auto temp = pq.top();
                 cached_posting = temp.obj;
                 pq.pop();
-                if (nextPostingStr(ifstream_vec[temp.from_file_index], temp2))
+                if (nextPostingStr(ifstream_vec[temp.from_file_index], temp2, cc))
                 {
                     pq.push(heap_entry<Util::Posting_str>{temp.from_file_index, temp2});
                 }
@@ -164,17 +167,17 @@ int main(int argc, char* argv[])
                         cached_posting.frequency += he.obj.frequency;
                     else
                     {
-                        write_to_file(os, cached_posting, true);
+                        write_to_file(os, cached_posting, cc);
                         cached_posting = he.obj;
                     }
                     Util::Posting_str ps;
                     pq.pop();
-                    if (nextPostingStr(ifstream_vec[idx], ps))
+                    if (nextPostingStr(ifstream_vec[idx], ps, cc))
                     {
                         pq.push(heap_entry<Util::Posting_str>{idx, ps});
                     }
                 }
-                write_to_file(os, cached_posting, true);
+                write_to_file(os, cached_posting, cc);
             }
             catch (exception& e)
             {

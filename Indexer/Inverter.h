@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include "Util.h"
+#include "compressor.h"
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -20,7 +21,7 @@ protected:
 	std::string outprefix_;
 	unsigned int curr_blockid_;
     unsigned int bufsize_;
-    bool encode_;
+    Util::compression::compressor* encode_;
     std::ofstream outputlist_;
 };
 
@@ -28,7 +29,7 @@ class BSBI_Inverter :
     public Inverter
 {
 public:
-    BSBI_Inverter(std::string outpath, std::string outprefix, const int bufsize, const bool encode, const bool use_termids)
+    BSBI_Inverter(std::string outpath, std::string outprefix, const int bufsize, Util::compression::compressor* encode)
     {
         _buf.reserve(bufsize/sizeof(Util::Posting));
         bufsize_ = bufsize;
@@ -36,7 +37,7 @@ public:
         outprefix_ = outprefix;
         outputlist_.open(outpath_ + "\\outputlist.txt", std::ios::out | std::ios::app);
         encode_ = encode;
-        _use_termids = use_termids;
+        _use_termids = true;
     }
     void invert(unsigned int, std::vector<std::string>&);
     void flush_buffer();
@@ -52,7 +53,7 @@ class SPIMI_Inverter :
     public Inverter
 {
 public:
-    SPIMI_Inverter(std::string outpath, std::string outprefix, const int bufsize, const bool encode)
+    SPIMI_Inverter(std::string outpath, std::string outprefix, const int bufsize, Util::compression::compressor* encode)
     {
         bufsize_ = bufsize;
         outpath_ = outpath;

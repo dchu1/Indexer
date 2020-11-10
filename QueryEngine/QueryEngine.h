@@ -20,15 +20,13 @@ namespace Query
 	};
 	struct ListPointer
 	{
-		std::ifstream is;
-		unsigned int num_chunks;
 		unsigned int beg_pos;
 		unsigned int end_pos;
-		unsigned int curr_docid; // current docid. If its 0, then that it indicates no chunk read
-		unsigned int curr_chunk_idx;
-		unsigned int curr_max_docid; // the largest docid in the current chunk
+		unsigned int curr_chunk_docid; // current docid. If its 0, then that it indicates no chunk read
+		unsigned int curr_chunk_pos;
+		unsigned int curr_chunk_max_docid; // the largest docid in the current chunk
 		unsigned int num_docs;
-		bool compressed;
+		std::vector<unsigned char> inv_list;
 		std::vector<unsigned int> curr_chunk;
 		// map last doc id to relative position, size
 		std::map<unsigned int, PositionEntry> chunk_positions;
@@ -41,10 +39,10 @@ namespace Query
 		virtual void closeList(ListPointer& lp) = 0;
 		virtual unsigned int nextGEQ(ListPointer& lp, unsigned int k) = 0;
 		virtual unsigned int getFreq(ListPointer& lp) = 0;
-		virtual void loadLexicon(const std::string& lexiconFilePath) = 0;
-		virtual unsigned int loadUrls(const std::string& urlFilePath) = 0;
+		virtual void loadLexicon(const std::string& lexiconFilePath, Util::compression::compressor* compressor) = 0;
 		virtual std::stack<Page> getTopKConjunctive(std::vector<std::string> query, int k) = 0;
 		virtual std::stack<Page> getTopKDisjunctive(std::vector<std::string> query, int k) = 0;
+		virtual std::string generateSnippet(std::string& docbody, std::vector<std::string> q) const = 0;
 	};
 	class DefaultQEngine : public QEngine
 	{
@@ -53,15 +51,15 @@ namespace Query
 		void closeList(ListPointer& lp) override;
 		unsigned int nextGEQ(ListPointer& lp, unsigned int k) override;
 		unsigned int getFreq(ListPointer& lp) override;
-		void loadLexicon(const std::string& lexiconFilePath) override;
-		unsigned int loadUrls(const std::string& urlFilePath) override;
+		void loadLexicon(const std::string& lexiconFilePath, Util::compression::compressor* compressor) override;
 		std::stack<Page> getTopKConjunctive(std::vector<std::string> query, int k) override;
 		std::stack<Page> getTopKDisjunctive(std::vector<std::string> query, int k) override;
+		std::string generateSnippet(std::string& docbody, std::vector<std::string> q) const override;
 		DefaultQEngine(const std::string& indexFilePath, const std::string& lexiconFilePath, PageStorage* ps, Util::compression::CompressorCreator* cc, Scorer* scorer) : 
 			_indexFilePath(indexFilePath)
 		{
 			_compressor = cc->create();
-			loadLexicon(lexiconFilePath);
+			loadLexicon(lexiconFilePath, _compressor);
 			_ps = ps;
 			_scorer = scorer;
 			_scorer->_davg = _ps->average_document_length();
@@ -78,5 +76,8 @@ namespace Query
 		Util::compression::compressor* _compressor;
 		Scorer* _scorer;
 		PageStorage* _ps;
+
+		std::vector<std::string> _lexicon_terms;
+		std::vector<Util::lexicon::LexiconMetadata> _lexicon_values;
 	};
 }

@@ -10,14 +10,14 @@
 #include "Util.h"
 
 // taken from Mergesort. Might want to make this a util function
-std::ifstream& nextPostingStr(std::ifstream& is, Util::Posting_str& posting)
+std::ifstream& nextPostingStr(std::ifstream& is, Util::Posting_str& posting, Util::compression::compressor* encoder)
 {
     try {
         int counter = 0;
         // read in docid, freq, # of bytes of string
         std::vector<unsigned int>vec;
         vec.reserve(3);
-        if (Util::decode(is, vec, 3))
+        if (encoder->decode(is, vec, 3))
         {
             posting.docid = vec[0];
             posting.frequency = vec[1];
@@ -57,14 +57,17 @@ std::ifstream& nextPostingStr(std::ifstream& is, Util::Posting_str& posting)
 //}
 
 // write out in encoded form (position, count, size of term in bytes, term)
-unsigned int write_to_lexicon(std::ofstream& os, std::string& word, unsigned int position, unsigned int counter)
+unsigned int write_to_lexicon(std::ofstream& os, std::string& word, unsigned int position, unsigned int counter, Util::compression::compressor* encoder)
 {
     size_t size = word.size();
-    std::vector<unsigned char> v = Util::encode(&position, 1);
+    std::vector<unsigned char> v;
+    encoder->encode(&position, v, 1);
     os.write((char*)v.data(), v.size());
-    v = Util::encode(&counter, 1);
+    v.clear();
+    encoder->encode(&counter, v, 1);
     os.write((char*)v.data(), v.size());
-    v = Util::encode(&size, 1);
+    v.clear();
+    encoder->encode(&size, v, 1);
     os.write((char*)v.data(), v.size());
     os.write(word.c_str(), size);
     return 0;
@@ -104,17 +107,18 @@ int main(int argc, char* argv[])
         // start getting postings
         // the first posting is treated differently since we
         // need to initialize current_word
-        nextPostingStr(is, ps);
+        nextPostingStr(is, ps, compress);
         current_word = ps.term;
         block_docids.push_back(ps.docid);
         block_frequencies.push_back(ps.frequency);
         doc_counter = 1;
         try {
-            while (nextPostingStr(is, ps))
+            while (true)
             {
+                nextPostingStr(is, ps, compress);
                 // if we are still in the same word and have space in the block, just add the data
-                // to our block
-                if (ps.term.compare(current_word) == 0)
+                // to our block. Note we first check if is still good
+                if (is && ps.term.compare(current_word) == 0)
                 {
                     ++doc_counter;
                     // if we are starting a new chunk, we will use the docid as is,
@@ -174,23 +178,34 @@ int main(int argc, char* argv[])
                     }
                     // flush to file
                     // write metadata
-                    index_os.write((char*)metadata.data(), sizeof(unsigned int) * metadata.size());
-                    curr_position += sizeof(unsigned int) * metadata.size();
+                    //index_os.write((char*)metadata.data(), sizeof(unsigned int) * metadata.size());
+                    //curr_position += sizeof(unsigned int) * metadata.size();
+                    std::vector<unsigned char> temp;
+                    compress->encode(metadata.data(), temp, metadata.size());
+                    index_os.write((char*)temp.data(), temp.size());
+                    curr_position += temp.size();
+
                     // write encoded data
                     index_os.write((char*)encoded_data.data(), encoded_data.size());
 
                     // write our lexicon entry out to file
-                    write_to_lexicon(lexicon_os, current_word, start_position, doc_counter);
+                    write_to_lexicon(lexicon_os, current_word, start_position, doc_counter, compress);
                     start_position = curr_position;
                     current_word = ps.term;
                     doc_counter = 1;
 
-                    // clear our data and add new data
-                    metadata.clear();
-                    block_docids.clear();
-                    block_frequencies.clear();
-                    block_docids.push_back(ps.docid);
-                    block_frequencies.push_back(ps.frequency);
+                    // clear our data and add new data (check if is is still good,
+                    // otherwise ps is still previous ps, since nothing was read in
+                    if (is)
+                    {
+                        metadata.clear();
+                        block_docids.clear();
+                        block_frequencies.clear();
+                        block_docids.push_back(ps.docid);
+                        block_frequencies.push_back(ps.frequency);
+                    }
+                    else
+                        break;
                 }
             }
         }

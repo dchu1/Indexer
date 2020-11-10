@@ -1,175 +1,143 @@
 #include "compressor.h"
-
-std::vector<unsigned char> Util::compression::varbyte::encode(const unsigned int* num, const int size) const
+#include <iostream>
+size_t Util::compression::varbyte::encode(const unsigned int* input, std::vector<unsigned char>& out_vec, int size) const
 {
-	std::vector<unsigned char> result;
-	unsigned char highest_bit_one = 128;
-	for (int it = 0; it < size; it++) {
-		unsigned char multiplicand, temp;
-		int base, size, i, counter = 0;
-		int remaining_value;
-		remaining_value = *(num + it);
-		i = (int)(log(remaining_value) / log(128)); // largest power of 128
-		while (remaining_value >= 128)
-		{
-			counter++;
-			base = pow(128, i);
-			multiplicand = remaining_value / base;
-			temp = multiplicand | highest_bit_one;
-			result.push_back(temp);
-			remaining_value = remaining_value % base;
-			i--;
-			//print_byte_as_bits(temp);
-		}
-		if (counter++ > sizeof(unsigned int))
-			throw "encode: wrote too many bytes";
-		counter = 0;
-		temp = (unsigned char)remaining_value;
-		result.push_back(temp);
-		//print_byte_as_bits(temp);
-	}
-	return result;
-}
-
-size_t Util::compression::varbyte::encode(const unsigned int* num, std::vector<unsigned char>& out_vec, const int size) const
-{
-	unsigned char highest_bit_one = 128;
 	size_t written_size = 0;
-	unsigned int counter = 0;
-	for (int it = 0; it < size; it++) {
-		unsigned char multiplicand;
-		int base, i;
-		int remaining_value;
-		remaining_value = *(num + it);
-		i = (int)(log(remaining_value) / log(128)); // largest power of 128
-		while (remaining_value >= 128)
-		{
-			++counter;
-			++written_size;
-			base = pow(128, i);
-			multiplicand = remaining_value / base;
-			out_vec.push_back(multiplicand | highest_bit_one);
-			remaining_value = remaining_value % base;
-			i--;
-			//print_byte_as_bits(temp);
-		}
-		if (counter++ > sizeof(unsigned int))
-			throw "encode: wrote too many bytes";
-		counter = 0;
-		++written_size;
-		out_vec.push_back((unsigned char)remaining_value);
-		//print_byte_as_bits(temp);
-	}
-	return written_size;
-}
-
-size_t Util::compression::varbyte::encode(const unsigned int* num, unsigned char*& out_p, const int size) const
-{
-	unsigned char highest_bit_one = 128;
-	size_t written_size = 0;
-	for (int it = 0; it < size; it++) {
-		unsigned char multiplicand, temp;
-		unsigned int counter = 0;
-		int base, i;
-		int remaining_value;
-		remaining_value = *(num + it);
-		i = (int)(log(remaining_value) / log(128)); // largest power of 128
-		while (remaining_value >= 128)
-		{
-			++counter;
-			++written_size;
-			base = pow(128, i);
-			multiplicand = remaining_value / base;
-			temp = multiplicand | highest_bit_one;
-			*out_p = temp;
-			++out_p;
-			remaining_value = remaining_value % base;
-			i--;
-			//print_byte_as_bits(temp);
-		}
-		if (counter++ > sizeof(unsigned int))
-			throw "encode: wrote too many bytes";
-		counter = 0;
-		++written_size;
-		temp = (unsigned char)remaining_value;
-		*out_p = temp;
-		++out_p;
-		//print_byte_as_bits(temp);
-	}
-	return written_size;
-}
-
-std::vector<unsigned int> Util::compression::varbyte::decode(const unsigned char* arr, int numints) const
-{
-	int start = 0, end = 0, accumulator = 0, size = 1, counter = 0, val;
-	std::vector<unsigned int> result;
-	result.reserve(numints);
-	while (counter < numints)
-	{
-		// if we have read more than enough bytes for an unsigned int,
-		// something is wrong with our input
-		size = end - start + 1;
-		if (size > sizeof(unsigned int) + 1)
-		{
-			throw std::invalid_argument("decode: overran memory boundary");
-		}
-		// check if the highest order bit is 0
-		// if it is, we've reached the end of an int
-		if ((arr[end] >> 7) ^ 1)
-		{
-			for (int i = size - 1; i >= 0; i--)
-			{
-				// clear the highest bit
-				val = arr[start] & ~(1UL << 7);
-				accumulator = accumulator + pow(128, i) * val;
-				start++;
-			}
-			result.push_back(accumulator);
-			start = end + 1;
-			accumulator = 0;
-			++counter;
-		}
-		++end;
-	}
-	return result;
-}
-
-//std::vector<unsigned int> decode(std::istream& is, int numints)
-std::ifstream& Util::compression::varbyte::decode(std::ifstream& is, std::vector<unsigned int>& vec, int numints) const
-{
-	unsigned char c;
-	std::vector<unsigned char> char_vec;
-	char_vec.reserve(numints * sizeof(unsigned int));
-	int size = 0, counter = 0;
 	try {
-		while (counter < numints && is.get(reinterpret_cast<char&>(c)))
-		{
-			// if we have read more than enough bytes for an unsigned int,
-			// something is wrong with our input
-			if (++size > sizeof(unsigned int) + 1)
-			{
-				throw std::invalid_argument("decode: overran memory boundary");
-			}
-			// check if the highest order bit is 0
-			// if it is, we've reached the end of an int
-			char_vec.push_back(c);
-			if ((c >> 7) ^ 1)
-			{
-				++counter;
-				size = 0;
-			}
+		for (int i = 0; i < size; i++) {
+			written_size += _encode(out_vec, input[i]);
 		}
 	}
 	catch (std::exception& e)
 	{
-		// do some handling maybe. I think this would most likely happen if
-		// istream ends unexpectedly (i.e. reach eof before expected number
-		// of bytes
 		throw e;
 	}
-	// if char_vec.size() == 0, it means the stream encountered eof before putting
-	// anything in vector
-	if (char_vec.size() > 0 && counter == numints)
-		vec = decode(char_vec.data(), numints);
+	return written_size;
+}
+
+std::ofstream& Util::compression::varbyte::encode(std::ofstream& os, const unsigned int* input, int size) const
+{
+	std::vector<unsigned char> temp_char_vec;
+	temp_char_vec.reserve(size*sizeof(unsigned int));
+	try {
+		encode(input, temp_char_vec, size);
+		os.write((char*)(temp_char_vec.data()), temp_char_vec.size());
+	}
+	catch (std::exception& e)
+	{
+		throw e;
+	}
+	return os;
+}
+
+size_t Util::compression::varbyte::decode(const unsigned char* input, std::vector<unsigned int>& output, int numints) const
+{
+	size_t read_size = 0;
+	unsigned int temp_ui;
+	try {
+		for (int i = 0; i < numints; i++)
+		{
+			read_size += _decode(&temp_ui, &input[read_size]);
+			output.push_back(temp_ui);
+		}
+	}
+	catch (std::exception& e)
+	{
+		throw e;
+	}
+	return read_size;
+}
+
+std::ifstream& Util::compression::varbyte::decode(std::ifstream& is, std::vector<unsigned int>& vec, int numints) const
+{
+	unsigned int counter = 0;
+	std::vector<unsigned char> temp_char_vec;
+	unsigned char c;
+	while (counter < numints && is.get(reinterpret_cast<char&>(c)))
+	{
+		if ((c >> 7) ^ 1)
+			++counter;
+		temp_char_vec.push_back(c);
+	}
+	if (is)
+	{
+		if (counter != numints)
+			throw "decode: did not read expected # of ints";
+		temp_char_vec.size();
+		decode(temp_char_vec.data(), vec, numints);
+	}
 	return is;
+}
+
+size_t Util::compression::varbyte::decode_bytes(const unsigned char* input, std::vector<unsigned int>& output, int numbytes) const
+{
+	size_t read_size = 0, r=0;
+	unsigned int temp_ui;
+	try {
+		for (int i = 0; i < numbytes; i += r)
+		{
+			r = _decode(&temp_ui, &input[read_size]);
+			read_size += r;
+			output.push_back(temp_ui);
+		}
+	}
+	catch (std::exception& e)
+	{
+		throw e;
+	}
+	return read_size;
+}
+// returns number of bytes written
+size_t Util::compression::varbyte::_encode(std::vector<unsigned char>& output, const unsigned int input) const
+{
+	unsigned char multiplicand, temp, highest_bit_one = 128;
+	unsigned int base, size, i, remaining_value, counter = 0;
+	remaining_value = input;
+	i = (int)(log(remaining_value) / log(128)); // largest power of 128
+	while (remaining_value >= 128)
+	{
+		counter++;
+		base = pow(128, i);
+		multiplicand = remaining_value / base;
+		temp = multiplicand | highest_bit_one;
+		output.push_back(temp);
+		remaining_value = remaining_value % base;
+		i--;
+		//print_byte_as_bits(temp);
+	}
+	if (counter++ > sizeof(unsigned int))
+		throw "encode: wrote too many bytes";
+	temp = (unsigned char)remaining_value;
+	output.push_back(temp);
+	return counter;
+}
+
+// returns the number of bytes read
+size_t Util::compression::varbyte::_decode(unsigned int* output, const unsigned char* input) const
+{
+	int accumulator = 0, size = 0, val;
+	bool finished = false;
+	for (size = 0; size < sizeof(unsigned int) + 1; size++)
+	{
+		// check if the highest order bit is 0
+		// if it is, we've reached the end of an int
+		if ((input[size] >> 7) ^ 1)
+		{
+			for (int i = size; i >= 0; i--)
+			{
+				// clear the highest bit
+				val = input[size-i] & ~(1UL << 7);
+				accumulator = accumulator + pow(128, i) * val;
+			}
+			*output = accumulator;
+			finished = true;
+			break;
+		}
+	}
+	
+	// if we have read more than enough bytes for an unsigned int,
+	// something is wrong with our input
+	if (!finished)
+		throw std::invalid_argument("decode: overran memory boundary");
+	return size + 1;
 }
