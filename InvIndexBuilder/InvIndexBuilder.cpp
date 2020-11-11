@@ -39,34 +39,20 @@ std::ifstream& nextPostingStr(std::ifstream& is, Util::Posting_str& posting, Uti
     return is;
 }
 
-// returns # of bytes written
-// write in form (unencoded docid, unencoded length of chunk, encoded docids, encoded frequencies)
-//unsigned int write_to_index(std::ofstream& os, const std::vector<unsigned int>& metadata, const std::vector<std::vector<unsigned char>>& chunks)
-//{
-//    // encode our data
-//    auto docids_encoded = Util::encode(block_docids.data(), block_docids.size());
-//    auto frequencies_encoded = Util::encode(block_frequencies.data(), block_frequencies.size());
-//    
-//    // update the metadata with the correct number of bytes
-//    metadata[1] = docids_encoded.size() + frequencies_encoded.size();
-//
-//    os.write((char*)&metadata, sizeof(unsigned int)*2);
-//    os.write((char*)docids_encoded.data(), docids_encoded.size());
-//    os.write((char*)frequencies_encoded.data(), frequencies_encoded.size());
-//    return sizeof(unsigned int) * 2 + docids_encoded.size() + frequencies_encoded.size();
-//}
-
 // write out in encoded form (position, count, size of term in bytes, term)
 unsigned int write_to_lexicon(std::ofstream& os, std::string& word, unsigned int position, unsigned int counter, Util::compression::compressor* encoder)
 {
+    // write position
     size_t size = word.size();
     std::vector<unsigned char> v;
     encoder->encode(&position, v, 1);
     os.write((char*)v.data(), v.size());
     v.clear();
+    // write doc count
     encoder->encode(&counter, v, 1);
     os.write((char*)v.data(), v.size());
     v.clear();
+    // write string size and string
     encoder->encode(&size, v, 1);
     os.write((char*)v.data(), v.size());
     os.write(word.c_str(), size);
@@ -75,6 +61,12 @@ unsigned int write_to_lexicon(std::ofstream& os, std::string& word, unsigned int
 // .\InvIndexBuilder.exe inputfile outputpath chunksizes encoding
 int main(int argc, char* argv[])
 {
+    // sparse keeps track of whether the current word should be put in our lexicon or
+    // our inverted list. If true, put it in inverted list, otherwise lexicon
+    bool use_sparse = true;
+    bool sparse = false;
+    bool prev_sparse = false;
+    
     // this will record the position in the file that the word's inverted index
     // starts at. Only works as long as index is below 4 Gb...
     unsigned int start_position = 0;
@@ -96,12 +88,19 @@ int main(int argc, char* argv[])
     Util::Posting_str ps;
     unsigned int prev_docid = 0;
     unsigned int doc_counter;
+    unsigned int doc_counter_since_last_full = std::numeric_limits<unsigned int>::max();
+    // we want the first lexicon entry to always be written out in full
 
     std::string line, current_word;
     std::ifstream is(argv[1], std::ios::in | std::ios::binary);
     std::ofstream index_os(outpath + "\\index.bin", std::ios::out | std::ios::binary);
     std::ofstream lexicon_os(outpath + "\\lexicon.bin", std::ios::out | std::ios::binary);
 
+    // a constant we will use in our index
+    unsigned char one_encoded = 128>>7;
+    unsigned char zero_encoded = '\0';
+    std::string empty_str = " ";
+    
     auto t1 = std::chrono::steady_clock::now();
     if (is) {
         // start getting postings
@@ -129,6 +128,21 @@ int main(int argc, char* argv[])
                 // if we have read a new word, we need to flush current word to file
                 else
                 {
+                    // determine whether this should be a sparse word. Our criteria is if the current word
+                    // has greater than 50 documents where it occurred, or if it has been 500 postings since
+                    // last full entry
+                    if (doc_counter > 50 || doc_counter_since_last_full > 500)
+                    {
+                        sparse = false;
+                        doc_counter_since_last_full = 0;
+                    }
+                    else
+                    {
+                        doc_counter_since_last_full += doc_counter;
+                        sparse = true;
+                        
+                    }
+
                     // reserve data in our metadata array (need to store 2 ints per chunk + 1 int for num_chunks)
                     size_t num_chunks = doc_counter / blocksize + (doc_counter % blocksize != 0);
                     metadata.reserve(num_chunks * 2 + 1);
@@ -176,11 +190,31 @@ int main(int argc, char* argv[])
                         s += " for term " + current_word;
                         throw s;
                     }
-                    // flush to file
-                    // write metadata
-                    //index_os.write((char*)metadata.data(), sizeof(unsigned int) * metadata.size());
-                    //curr_position += sizeof(unsigned int) * metadata.size();
+
+                    // encode and write to file
                     std::vector<unsigned char> temp;
+                    // if this word should be sparse, we will write to index file instead of lexicon
+                    // in the form (0, doc freq, size of string, string, rest of inverted list)
+                    if (use_sparse && sparse)
+                    {
+                        unsigned int str_size;
+                        written_size = 0;
+                        // 0 is our seperator
+                        index_os.write((char*)&zero_encoded, 1);
+                        // write our doc freq and string size
+                        str_size = current_word.size();
+                        written_size += compress->encode(&doc_counter, temp, 1);
+                        written_size += compress->encode(&str_size, temp, 1);
+                        index_os.write((char*)temp.data(), temp.size());
+                        // write our string
+                        index_os.write(current_word.c_str(), current_word.size());
+                        written_size += current_word.size();
+
+                        // increment our position
+                        curr_position += written_size + 1;
+                        temp.clear();
+                    }
+                    // encode  and write metadata
                     compress->encode(metadata.data(), temp, metadata.size());
                     index_os.write((char*)temp.data(), temp.size());
                     curr_position += temp.size();
@@ -188,8 +222,20 @@ int main(int argc, char* argv[])
                     // write encoded data
                     index_os.write((char*)encoded_data.data(), encoded_data.size());
 
-                    // write our lexicon entry out to file
-                    write_to_lexicon(lexicon_os, current_word, start_position, doc_counter, compress);
+                    // write our lexicon entry out to file. If sparse entry, we will only write if the
+                    // previous entry was not sparse (because we calculate the ending position of a
+                    // word based on the next words starting position)
+                    if (use_sparse && sparse)
+                    {
+                        if (!prev_sparse)
+                            write_to_lexicon(lexicon_os, empty_str, start_position, doc_counter, compress);
+                        prev_sparse = true;
+                    }
+                    else
+                    {
+                        write_to_lexicon(lexicon_os, current_word, start_position, doc_counter, compress);
+                        prev_sparse = false;
+                    }
                     start_position = curr_position;
                     current_word = ps.term;
                     doc_counter = 1;

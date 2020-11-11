@@ -8,7 +8,7 @@ struct Page
 	unsigned int size;
 	std::string url;
 	std::string body;
-	friend bool operator<(const Page& l, const Page& r) { return std::tie(l.docid, l.size) < std::tie(r.docid, r.size); };
+	friend bool operator<(const Page& l, const Page& r) { return std::tie(l.size, l.docid) < std::tie(r.size, r.docid); };
 };
 class PageStorage
 {

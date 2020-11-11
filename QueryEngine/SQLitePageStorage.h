@@ -35,7 +35,7 @@ public:
 
 		_rc = sqlite3_prepare_v2(
 			_db,            // the handle to your (opened and ready) database
-			"SELECT avg(SIZE) FROM PAGES;",    // the sql statement, utf-8 encoded
+			"SELECT avg(SIZE) FROM (SELECT SIZE FROM PAGES LIMIT 10000);",    // the sql statement, utf-8 encoded
 			-1,				// max length of sql statement (-1 means read until null termintaed)
 			&_getDocAvgLengthStmt,          // this is an "out" parameter, the compiled statement goes here
 			nullptr);       // pointer to the tail end of sql statement (when there are 

@@ -90,11 +90,19 @@ size_t Util::compression::varbyte::decode_bytes(const unsigned char* input, std:
 // returns number of bytes written
 size_t Util::compression::varbyte::_encode(std::vector<unsigned char>& output, const unsigned int input) const
 {
+	// special case for input = 0
+	if (input == 0)
+	{
+		unsigned char c = '\0';
+		output.push_back(c);
+		return 1;
+	}
+
 	unsigned char multiplicand, temp, highest_bit_one = 128;
 	unsigned int base, size, i, remaining_value, counter = 0;
 	remaining_value = input;
 	i = (int)(log(remaining_value) / log(128)); // largest power of 128
-	while (remaining_value >= 128)
+	for (i; i > 0; i--)
 	{
 		counter++;
 		base = pow(128, i);
@@ -102,7 +110,6 @@ size_t Util::compression::varbyte::_encode(std::vector<unsigned char>& output, c
 		temp = multiplicand | highest_bit_one;
 		output.push_back(temp);
 		remaining_value = remaining_value % base;
-		i--;
 		//print_byte_as_bits(temp);
 	}
 	if (counter++ > sizeof(unsigned int))
