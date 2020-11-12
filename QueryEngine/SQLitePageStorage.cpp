@@ -20,7 +20,18 @@ Page SQLitePageStorage::getDocument(unsigned int docid) const
     }
     return p;
 }
-
+std::string SQLitePageStorage::getUrl(unsigned int docid) const
+{
+    return "";
+}
+std::string SQLitePageStorage::getBody(unsigned int docid) const
+{
+    return "";
+}
+size_t SQLitePageStorage::getSize(unsigned int docid) const
+{
+    return _size_cache[docid];
+}
 unsigned int SQLitePageStorage::average_document_length() const
 {
     unsigned int avg;
@@ -39,16 +50,5 @@ unsigned int SQLitePageStorage::average_document_length() const
 
 unsigned int SQLitePageStorage::size() const
 {
-    unsigned int size;
-    if (sqlite3_step(_getNumRowsStmt) == SQLITE_ROW)
-    {
-        size = sqlite3_column_int(_getNumRowsStmt, 0);
-        sqlite3_reset(_getNumRowsStmt);
-    }
-    else
-    {
-        sqlite3_reset(_getNumRowsStmt);
-        throw "Unable to get average document length";
-    }
-    return size;
+    return _num_rows;
 }

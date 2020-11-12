@@ -46,9 +46,9 @@ namespace Query
 		virtual unsigned int nextGEQ(ListPointer& lp, unsigned int k) = 0;
 		virtual unsigned int getFreq(ListPointer& lp) = 0;
 		virtual void loadLexicon(const std::string& lexiconFilePath, Util::compression::compressor* compressor) = 0;
-		virtual std::stack<PageResult> getTopKConjunctive(std::vector<std::string>& query, int k) = 0;
-		virtual std::stack<PageResult> getTopKDisjunctive(std::vector<std::string>& query, int k) = 0;
-		virtual std::string generateSnippet(PageResult&) const = 0;
+		virtual std::stack<Page> getTopKConjunctive(std::vector<std::string>& query, int k) = 0;
+		virtual std::stack<Page> getTopKDisjunctive(std::vector<std::string>& query, int k) = 0;
+		virtual std::string generateSnippet(Page&, std::vector<std::string>& query) const = 0;
 	};
 	class DefaultQEngine : public QEngine
 	{
@@ -58,9 +58,9 @@ namespace Query
 		unsigned int nextGEQ(ListPointer& lp, unsigned int k) override;
 		unsigned int getFreq(ListPointer& lp) override;
 		void loadLexicon(const std::string& lexiconFilePath, Util::compression::compressor* compressor) override;
-		std::stack<PageResult> getTopKConjunctive(std::vector<std::string>& query, int k) override;
-		std::stack<PageResult> getTopKDisjunctive(std::vector<std::string>& query, int k) override;
-		std::string generateSnippet(PageResult&) const override;
+		std::stack<Page> getTopKConjunctive(std::vector<std::string>& query, int k) override;
+		std::stack<Page> getTopKDisjunctive(std::vector<std::string>& query, int k) override;
+		std::string generateSnippet(Page&, std::vector<std::string>& query) const override;
 		void loadList(std::vector<std::string>& query);
 		DefaultQEngine(const std::string& indexFilePath, const std::string& lexiconFilePath, PageStorage* ps, Util::compression::CompressorCreator* cc, Scorer* scorer) :
 			_indexFilePath(indexFilePath), _lp_capacity{100}, _query_counter{0}

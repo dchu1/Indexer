@@ -15,7 +15,7 @@ std::ifstream& nextPostingStr(std::ifstream& is, Util::Posting_str& posting, Uti
     try {
         int counter = 0;
         // read in docid, freq, # of bytes of string
-        std::vector<unsigned int>vec;
+        std::vector<unsigned int> vec;
         vec.reserve(3);
         if (encoder->decode(is, vec, 3))
         {
@@ -42,20 +42,28 @@ std::ifstream& nextPostingStr(std::ifstream& is, Util::Posting_str& posting, Uti
 // write out in encoded form (position, count, size of term in bytes, term)
 unsigned int write_to_lexicon(std::ofstream& os, std::string& word, unsigned int position, unsigned int counter, Util::compression::compressor* encoder)
 {
-    // write position
-    size_t size = word.size();
-    std::vector<unsigned char> v;
-    encoder->encode(&position, v, 1);
-    os.write((char*)v.data(), v.size());
-    v.clear();
-    // write doc count
-    encoder->encode(&counter, v, 1);
-    os.write((char*)v.data(), v.size());
-    v.clear();
-    // write string size and string
-    encoder->encode(&size, v, 1);
-    os.write((char*)v.data(), v.size());
-    os.write(word.c_str(), size);
+    try
+    {
+        // write position
+        size_t size = word.size();
+        std::vector<unsigned char> v;
+        encoder->encode(&position, v, 1);
+        os.write((char*)v.data(), v.size());
+        v.clear();
+        // write doc count
+        encoder->encode(&counter, v, 1);
+        os.write((char*)v.data(), v.size());
+        v.clear();
+        // write string size and string
+        encoder->encode(&size, v, 1);
+        os.write((char*)v.data(), v.size());
+        os.write(word.c_str(), size);
+    }
+    catch (std::exception& e)
+    {
+        std::cout << "Error while writing lexicon: " << e.what() << std::endl;
+        throw e;
+    }
     return 0;
 }
 // .\InvIndexBuilder.exe inputfile outputpath chunksizes encoding
@@ -258,7 +266,7 @@ int main(int argc, char* argv[])
         catch (std::exception e)
         {
             std::cout << e.what() << std::endl;
-            throw e;
+            return 1;
         }
     }
     else {

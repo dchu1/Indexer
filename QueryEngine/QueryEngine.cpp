@@ -12,45 +12,45 @@
 #include "PageStorage.h"
 #include <iterator>
 #include <boost/algorithm/string.hpp>
-#include <boost/algorithm/string/iter_find.hpp>
-#include <boost/algorithm/string/finder.hpp>
+#include <stdexcept>
 
-std::string Query::DefaultQEngine::generateSnippet(PageResult& pr) const
+std::string Query::DefaultQEngine::generateSnippet(Page& p, std::vector<std::string>& query) const
 {
 	double score;
-	// split into sentences (very simplistic version)
+	// split into sentences (very simplistic version that just splits on new line characters)
 	std::vector<std::string> sentences;
 	std::vector<std::string> words;
-	//iter_split(sentences, pr.p.body, boost::algorithm::first_finder("\r\n"));
-	boost::split(sentences, pr.p.body, boost::is_any_of("\r\n"));
+	boost::split(sentences, p.body, boost::is_any_of("\r\n"));
 	sentences.erase(std::remove_if(std::begin(sentences), std::end(sentences), [](std::string x) { return x.size() == 0; }), std::end(sentences));
 
 	std::vector<std::pair<unsigned int, unsigned int>> scores;
-	// iterate through sentences and score them using bm25
-	// calculate avg sentence length
 	auto scorer = new ScorerBM25();
-	scorer->_N = pr.p.size;
+	scorer->_N = p.size;
 	unsigned int accumulator = 0;
+
+	// calculate avg sentence length
 	for (auto& sent : sentences)
 	{
 		accumulator += sent.size();
 	}
 	scorer->_davg = accumulator / sentences.size();
 
-	// #sentences with term1, #term1 in sentence, #sentences with term2, # term2 in sentence...
+	// calculate the metrics we are going to use to score using BM25. This means iterating over
+	// sentences and calculating term frequencies
+	// args: #sentences with term1, #term1 in sentence, #sentences with term2, # term2 in sentence...
 	std::map<std::string, double> sentence_query_counts;
 	std::map<std::string, double> query_sentence_counts;
 	std::queue<double> args_queue;
-	for (auto& query : pr.query_freqs)
-		query_sentence_counts[query.first] = 0;
+	for (auto& q : query)
+		query_sentence_counts[q] = 0;
 	std::vector<double> args;
-	args.reserve(1 + pr.query_freqs.size()*2);
+	args.reserve(1 + query.size()*2);
 
 	for (auto& sent : sentences)
 	{
 		// initialize query counts
-		for (auto& query : pr.query_freqs)
-			sentence_query_counts[query.first] = 0;
+		for (auto& q : query)
+			sentence_query_counts[q] = 0;
 
 		// tokenize sentence. taken from boost tokenizer
 		boost::split(words, sent, boost::is_any_of(" @#$%^&*<>`:.,?!()/\\+-_[]{}\"\'\r\n\t"));
@@ -74,7 +74,7 @@ std::string Query::DefaultQEngine::generateSnippet(PageResult& pr) const
 		}
 	}
 
-	// score each sentence
+	// score each sentence and put it in our score vector
 	int i = 0;
 	for (auto& sent : sentences)
 	{
@@ -92,12 +92,28 @@ std::string Query::DefaultQEngine::generateSnippet(PageResult& pr) const
 		i++;
 	}
 	
+	// return the top sentence and some surrounding sentences
 	std::sort(scores.rbegin(), scores.rend());
 	std::string ret_string = "";
-	int ret_size = std::min(3, (int)sentences.size());
-	for (i = 0; i < ret_size; i++)
+	int ret_size = std::min(4, (int)sentences.size());
+	int top_score_idx = scores[0].second;
+	int front = std::min(ret_size / 2, top_score_idx);
+	int back = std::min(ret_size / 2, (int)sentences.size() - top_score_idx - 1);
+	if (front + back != ret_size)
 	{
-		ret_string += sentences[scores[i].second] + "\r\n";
+		if (front > back)
+			front += ret_size / 2 - back;
+		else
+			back += ret_size / 2 - front;
+	}
+	// if best scoring sentence is not the first, add the one before it
+	for (i = front; i > 0 ; i--)
+	{
+		ret_string += sentences[top_score_idx - i] + "\r\n";
+	}
+	for (i = 0; i <= back; i++)
+	{
+		ret_string += sentences[top_score_idx + i] + "\r\n";
 	}
 	return ret_string;
 }
@@ -246,9 +262,7 @@ Query::ListPointer Query::DefaultQEngine::openList(const std::string& term)
 				}
 				temp_str.clear();
 			}
-		}
-		if (!found)
-			throw term + " not found";
+		}	
 	}
 	// this is the case where we can read from the in memory lexicon, seek to the position in our lexicon
 	else
@@ -257,6 +271,11 @@ Query::ListPointer Query::DefaultQEngine::openList(const std::string& term)
 		lp.end_pos = _lexicon_values[index].next_lexicon_entry_pos;
 		lp.num_docs = _lexicon_values[index].docid_count;
 		ind_is.seekg(_lexicon_values[index].position, ind_is.beg);
+	}
+
+	if (!found)
+	{
+		throw std::invalid_argument("term not found");
 	}
 
 	unsigned int num_chunks;
@@ -389,27 +408,45 @@ void Query::DefaultQEngine::loadList(std::vector<std::string>& query)
 			_lp_vec.erase(_lp_vec.begin() + p.second);
 		}
 	}
-	for (auto& str : terms_not_in_cache)
+	try
 	{
-		_lp_map[str] = openList(str);
-		_lp_vec.push_back(std::make_pair(_query_counter, str));
+		for (auto& str : terms_not_in_cache)
+		{
+			_lp_map[str] = openList(str);
+			_lp_vec.push_back(std::make_pair(_query_counter, str));
+		}
+	}
+	catch (std::exception& e)
+	{
+		throw e;
 	}
 }
 
-std::stack<Query::PageResult> Query::DefaultQEngine::getTopKConjunctive(std::vector<std::string>& query, int k)
+std::stack<Page> Query::DefaultQEngine::getTopKConjunctive(std::vector<std::string>& query, int k)
 {
 	++_query_counter;
 
+	// holds the top k scores
 	std::priority_queue<
-		std::pair<double, PageResult>,
-		std::vector<std::pair<double, PageResult>>,
-		std::greater<std::pair<double, PageResult>>> topk_pq;	// priority queue uses pair <score, docid>
+		std::pair<double, unsigned int>,
+		std::vector<std::pair<double, unsigned int>>,
+		std::greater<std::pair<double, unsigned int>>> topk_pq;	// priority queue uses pair <score, docid>
 	unsigned int d = 0, max_docid, min_idx = 0, curr_docid, min_docs = std::numeric_limits<unsigned int>::max();
 	double min_score, score;
-	std::stack<PageResult> page_stack;
+	std::stack<Page> page_stack;
 	
 	std::string min_str;
-	loadList(query);
+
+	// load list pointers
+	try
+	{
+		loadList(query);
+	}
+	catch (std::exception& e)
+	{
+		throw e;
+	}
+
 	for (auto& str : query)
 	{
 		std::cout << str << ": " << _lp_map[str].num_docs << " docs" << std::endl;
@@ -440,32 +477,35 @@ std::stack<Query::PageResult> Query::DefaultQEngine::getTopKConjunctive(std::vec
 			curr_docid = nextGEQ(_lp_map[min_str], d);
 		else // otherwise we did find a common docid, so calculate score
 		{
-			PageResult pr;
-			pr.p = _ps->getDocument(curr_docid);
-			std::vector<double> args;
-			args.reserve(query.size() * 2 + 1);
-			// push document length
-			args.push_back(pr.p.size);
-			// push the rest of the args
-			for (auto& str : query)
+			try
 			{
-				unsigned int freq = getFreq(_lp_map[str]);
-				pr.query_freqs[str] = freq;
-				args.push_back(static_cast<double>(_lp_map[str].num_docs));
-				args.push_back(static_cast<double>(freq));
+				std::vector<double> args;
+				args.reserve(query.size() * 2 + 1);
+				// push document length
+				args.push_back(_ps->getSize(curr_docid));
+				// push the rest of the args
+				for (auto& str : query)
+				{
+					args.push_back(static_cast<double>(_lp_map[str].num_docs));
+					args.push_back(static_cast<double>(getFreq(_lp_map[str])));
+				}
+				// get the score
+				score = _scorer->score(args);
+				// if queue size < k, push onto queue
+				if (topk_pq.size() < k)
+					topk_pq.emplace(std::pair<double, unsigned int> {score, curr_docid});
+				// otherwise we need to check whether this score is higher than the smallest score in queue
+				else if (score > topk_pq.top().first)
+				{
+					topk_pq.pop();
+					topk_pq.emplace(std::pair<double, unsigned int> {score, curr_docid});
+				}
+				curr_docid = nextGEQ(_lp_map[min_str], curr_docid + 1);
 			}
-			// get the score
-			score = _scorer->score(args);
-			// if queue size < k, push onto queue
-			if (topk_pq.size() < k)
-				topk_pq.emplace(std::pair<double, PageResult> {score, pr});
-			// otherwise we need to check whether this score is higher than the smallest score in queue
-			else if (score > topk_pq.top().first)
+			catch (std::exception& e)
 			{
-				topk_pq.pop();
-				topk_pq.emplace(std::pair<double, PageResult> {score, pr});
+				throw std::string("Error while scoring: ") + e.what();
 			}
-			curr_docid = nextGEQ(_lp_map[min_str], curr_docid + 1);
 		}
 	}
 
@@ -474,22 +514,29 @@ std::stack<Query::PageResult> Query::DefaultQEngine::getTopKConjunctive(std::vec
 	//	closeList(lp);
 
 	// reverse pq and return docids
-	while (!topk_pq.empty())
+	try
 	{
-		page_stack.push(topk_pq.top().second);
-		topk_pq.pop();
+		while (!topk_pq.empty())
+		{
+			page_stack.push(_ps->getDocument(topk_pq.top().second));
+			topk_pq.pop();
+		}
+		return page_stack;
 	}
-	return page_stack;
+	catch (...)
+	{
+		throw "Error getting document";
+	}
 }
 
-std::stack<Query::PageResult> Query::DefaultQEngine::getTopKDisjunctive(std::vector<std::string>& query, int k)
+std::stack<Page> Query::DefaultQEngine::getTopKDisjunctive(std::vector<std::string>& query, int k)
 {
 	++_query_counter;
 
 	std::priority_queue<
-		std::pair<double, PageResult>,
-		std::vector<std::pair<double, PageResult>>,
-		std::greater<std::pair<double, PageResult>>> topk_pq;	// priority queue uses pair <score, docid>
+		std::pair<double, unsigned int>,
+		std::vector<std::pair<double, unsigned int>>,
+		std::greater<std::pair<double, unsigned int>>> topk_pq;	// priority queue uses pair <score, docid>
 	std::priority_queue<
 		unsigned int,
 		std::vector<unsigned int>,
@@ -497,11 +544,17 @@ std::stack<Query::PageResult> Query::DefaultQEngine::getTopKDisjunctive(std::vec
 
 	unsigned int d, min_docid, min_idx = 0, curr_docid = 0;
 	double min_score, score;
-	std::stack<PageResult> page_stack;
+	std::stack<Page> page_stack;
 
 	// load list pointers
-	loadList(query);
-
+	try
+	{
+		loadList(query);
+	}
+	catch (std::exception& e)
+	{
+		throw e;
+	}
 	// get the smallest docids and put them in our queue
 	for (auto& q : query)
 	{
@@ -515,39 +568,41 @@ std::stack<Query::PageResult> Query::DefaultQEngine::getTopKDisjunctive(std::vec
 		// get the min docid in our priority queue
 		curr_docid = docid_pq.top();
 		docid_pq.pop();
-		PageResult pr;
-		pr.p = _ps->getDocument(curr_docid);
 		std::vector<double> args;
 		// push document length
-		args.push_back(pr.p.size);
-
-		// iterate through each list pointer. construct our args from each lp that has our curr_docid
-		for (auto& str : query)
+		args.push_back(_ps->getSize(curr_docid));
+		try
 		{
-			// if the lp's curr docid == min docid, get the frequency, then advance the pointer
-			if (_lp_map[str].curr_chunk_docid == curr_docid)
+			// iterate through each list pointer. construct our args from each lp that has our curr_docid
+			for (auto& str : query)
 			{
-				unsigned int freq = getFreq(_lp_map[str]);
-				pr.query_freqs[str] = freq;
-				args.push_back(static_cast<double>(_lp_map[str].num_docs));
-				args.push_back(static_cast<double>(freq));
-				unsigned int docid = nextGEQ(_lp_map[str], curr_docid+1);
-				if (docid < std::numeric_limits<unsigned int>::max())
-					docid_pq.push(docid);
+				// if the lp's curr docid == min docid, get the frequency, then advance the pointer
+				if (_lp_map[str].curr_chunk_docid == curr_docid)
+				{
+					args.push_back(static_cast<double>(_lp_map[str].num_docs));
+					args.push_back(static_cast<double>(getFreq(_lp_map[str])));
+					unsigned int docid = nextGEQ(_lp_map[str], curr_docid + 1);
+					if (docid < std::numeric_limits<unsigned int>::max())
+						docid_pq.push(docid);
+				}
 			}
+			score = _scorer->score(args);
+		}
+		catch(std::exception& e)
+		{
+			throw std::string("Error while scoring: ") + e.what();
 		}
 
-		// score curr_docid
-		score = _scorer->score(args);
 		// if queue size < k, push onto queue
 		if (topk_pq.size() < k)
-			topk_pq.emplace(std::pair<double, PageResult> {score, pr});
+			topk_pq.emplace(std::pair<double, unsigned int> {score, curr_docid});
 		// otherwise we need to check whether this score is higher than the smallest score in queue
 		else if (score > topk_pq.top().first)
 		{
 			topk_pq.pop();
-			topk_pq.emplace(std::pair<double, PageResult> {score, pr});
+			topk_pq.emplace(std::pair<double, unsigned int> {score, curr_docid});
 		}
+		
 	}
 
 	// close list pointers
@@ -555,12 +610,19 @@ std::stack<Query::PageResult> Query::DefaultQEngine::getTopKDisjunctive(std::vec
 	//	closeList(lp);
 
 	// reverse pq and return docids
-	while (!topk_pq.empty())
+	try
 	{
-		page_stack.push(topk_pq.top().second);
-		topk_pq.pop();
+		while (!topk_pq.empty())
+		{
+			page_stack.push(_ps->getDocument(topk_pq.top().second));
+			topk_pq.pop();
+		}
+		return page_stack;
 	}
-	return page_stack;
+	catch (...)
+	{
+		throw "Error getting document";
+	}
 }
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
 // Debug program: F5 or Debug > Start Debugging menu

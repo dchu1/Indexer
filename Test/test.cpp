@@ -6,15 +6,15 @@
 #include <array>
 
 TEST(UtilTestSuite, VarbyteEncodeDecode) {
-	unsigned int temp[3] = { 0,50000,3000000 };
+	unsigned int temp[1] = { 2415937952 };
 	Util::compression::compressor* cc = new Util::compression::varbyte();
 	std::vector<unsigned char> enc;
 	std::vector<unsigned int> dec;
-	cc->encode(&temp[0], enc, 3);
-	cc->decode(enc.data(), dec, 3);
+	cc->encode(&temp[0], enc, 1);
+	cc->decode(enc.data(), dec, 1);
 	ASSERT_EQ(dec[0], temp[0]);
-	ASSERT_EQ(dec[1], temp[1]);
-	ASSERT_EQ(dec[2], temp[2]);
+	//ASSERT_EQ(dec[1], temp[1]);
+	//ASSERT_EQ(dec[2], temp[2]);
 }
 
 TEST(UtilTestSuite, VarbyteEncodeDecodeStream) {

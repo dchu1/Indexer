@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
 	{
 		if (line.size() == 0)
 			continue;
-		std::stack<Query::PageResult> results;
+		std::stack<Page> results;
 		// construct a stream from the string
 		std::stringstream strstr(line);
 
@@ -53,8 +53,8 @@ int main(int argc, char* argv[])
 
 			while (!results.empty())
 			{
-				std::cout << results.top().p.url << '\n';
-				std::cout << qe.generateSnippet(results.top()) << '\n' << std::endl;
+				std::cout << results.top().url << '\n';
+				std::cout << qe.generateSnippet(results.top(), query) << '\n' << std::endl;
 				results.pop();
 			}
 		}

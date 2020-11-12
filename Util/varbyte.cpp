@@ -1,5 +1,7 @@
 #include "compressor.h"
 #include <iostream>
+#include <string>
+
 size_t Util::compression::varbyte::encode(const unsigned int* input, std::vector<unsigned char>& out_vec, int size) const
 {
 	size_t written_size = 0;
@@ -63,7 +65,6 @@ std::ifstream& Util::compression::varbyte::decode(std::ifstream& is, std::vector
 	{
 		if (counter != numints)
 			throw "decode: did not read expected # of ints";
-		temp_char_vec.size();
 		decode(temp_char_vec.data(), vec, numints);
 	}
 	return is;
@@ -116,13 +117,24 @@ size_t Util::compression::varbyte::_encode(std::vector<unsigned char>& output, c
 		throw "encode: wrote too many bytes";
 	temp = (unsigned char)remaining_value;
 	output.push_back(temp);
+
+	// TEST CODE TO CHECK ENCODING
+	unsigned int test_num;
+	_decode(&test_num, &output[output.size() - counter]);
+	if (test_num != input)
+	{
+		std::string err = "_encode: incorrect encoding/decoding. Expected " + std::to_string(input) + ", Got " + std::to_string(test_num);
+		std::cout << err << std::endl;
+		throw err;
+	}
+
 	return counter;
 }
 
 // returns the number of bytes read
 size_t Util::compression::varbyte::_decode(unsigned int* output, const unsigned char* input) const
 {
-	int accumulator = 0, size = 0, val;
+	unsigned int accumulator = 0, size = 0, val;
 	bool finished = false;
 	for (size = 0; size < sizeof(unsigned int) + 1; size++)
 	{

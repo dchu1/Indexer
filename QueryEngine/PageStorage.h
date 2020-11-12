@@ -14,6 +14,9 @@ class PageStorage
 {
 public:
 	virtual Page getDocument(unsigned int docid) const = 0;
+	virtual std::string getUrl(unsigned int docid) const = 0;
+	virtual std::string getBody(unsigned int docid) const = 0;
+	virtual size_t getSize(unsigned int docid) const = 0;
 	virtual unsigned int average_document_length() const = 0;
 	virtual unsigned int size() const = 0;
 };
