@@ -66,7 +66,7 @@ unsigned int write_to_lexicon(std::ofstream& os, std::string& word, unsigned int
     }
     return 0;
 }
-// .\InvIndexBuilder.exe inputfile outputpath chunksizes encoding
+// .\InvIndexBuilder.exe inputfile outputpath
 int main(int argc, char* argv[])
 {
     // sparse keeps track of whether the current word should be put in our lexicon or
@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
     compress = new Util::compression::varbyte;
 
     // data structures to hold temporary data
-    unsigned int blocksize = std::stoi(argv[3]);
+    unsigned int blocksize = 128;
     std::vector<unsigned int> block_docids;
     block_docids.reserve(blocksize);
     std::vector<unsigned int> block_frequencies;

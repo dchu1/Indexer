@@ -21,11 +21,13 @@ int main(int argc, char* argv[])
 	auto timerStart = std::chrono::steady_clock::now();
 	Query::DefaultQEngine qe(argv[1], argv[2], ps, cc, scorer);
 	std::cout << "Initializing Query Engine took: " << std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - timerStart).count() << " seconds." << '\n';
+
+	// Get our user's query
 	while ((std::cout << "Please enter a query: "), std::getline(std::cin, line))
 	{
 		if (line.size() == 0)
 			continue;
-		std::stack<Page> results;
+		std::stack<Query::PageResult> results;
 		// construct a stream from the string
 		std::stringstream strstr(line);
 
@@ -39,11 +41,15 @@ int main(int argc, char* argv[])
 		{
 			if (line.compare("d") == 0)
 			{
+				timerStart = std::chrono::steady_clock::now();
 				results = qe.getTopKDisjunctive(query, 10);
+				std::cout << "Lookup took: " << std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - timerStart).count() << " seconds." << '\n';
 			}
 			else if (line.compare("c") == 0)
 			{
+				timerStart = std::chrono::steady_clock::now();
 				results = qe.getTopKConjunctive(query, 10);
+				std::cout << "Lookup took: " << std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - timerStart).count() << " seconds." << '\n';
 			}
 			else
 			{
@@ -51,10 +57,15 @@ int main(int argc, char* argv[])
 				continue;
 			}
 
+			// iterate through our results and generate snippets
 			while (!results.empty())
 			{
-				std::cout << results.top().url << '\n';
-				std::cout << qe.generateSnippet(results.top(), query) << '\n' << std::endl;
+				std::cout << "Document ID: " << results.top().p.docid << '\n';
+				std::cout << results.top().p.url << '\n';
+				std::cout << "Score: " << results.top().score << '\n';
+				for (auto& freq : results.top().query_freqs)
+					std::cout << freq.first << ": " << freq.second << " occurrences" << '\n';
+				std::cout << qe.generateSnippet(results.top().p, query) << '\n' << std::endl;
 				results.pop();
 			}
 		}

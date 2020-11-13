@@ -1,5 +1,10 @@
 #include "SQLitePageStorage.h"
 
+/// <summary>
+/// Fetches document id, url, body and size of a given Document ID from the SQLite3 db
+/// </summary>
+/// <param name="docid">docid to get results for</param>
+/// <returns>A Page document</returns>
 Page SQLitePageStorage::getDocument(unsigned int docid) const
 {
     Page p;
@@ -28,10 +33,21 @@ std::string SQLitePageStorage::getBody(unsigned int docid) const
 {
     return "";
 }
+
+/// <summary>
+/// Get the size of a document
+/// </summary>
+/// <param name="docid">Document id to get the size for</param>
+/// <returns>The size of the document</returns>
 size_t SQLitePageStorage::getSize(unsigned int docid) const
 {
     return _size_cache[docid];
 }
+
+/// <summary>
+/// Get the average document length. For speed, I only sample the first 10000 rows.
+/// </summary>
+/// <returns>Avg document length</returns>
 unsigned int SQLitePageStorage::average_document_length() const
 {
     unsigned int avg;
@@ -48,6 +64,10 @@ unsigned int SQLitePageStorage::average_document_length() const
     return avg;
 }
 
+/// <summary>
+/// Get the number of documents in our db
+/// </summary>
+/// <returns>Number of documents in db</returns>
 unsigned int SQLitePageStorage::size() const
 {
     return _num_rows;
